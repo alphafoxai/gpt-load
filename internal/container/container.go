@@ -33,6 +33,7 @@ import (
 	"gpt-load/internal/ratelimit"
 	"gpt-load/internal/releasecheck"
 	"gpt-load/internal/requestlog"
+	"gpt-load/internal/rpm"
 	"gpt-load/internal/state"
 	stateloader "gpt-load/internal/state/loader"
 	"gpt-load/internal/storage"
@@ -73,7 +74,12 @@ func BuildContainer() (*dig.Container, error) {
 		func(bootstrap *control.CatalogBootstrap) *catalog.Runtime { return bootstrap.Runtime },
 		health.NewStatsStore,
 		health.NewMutationCoordinator,
-		ratelimit.NewAccessKeyRPM,
+		rpm.NewStore,
+		func(store *rpm.Store) *ratelimit.AccessKeyRPM {
+			limiter := ratelimit.NewAccessKeyRPM()
+			limiter.SetRPMStore(store)
+			return limiter
+		},
 		func(limiter *ratelimit.AccessKeyRPM) gateway.AccessKeyRPMLimiter {
 			return limiter
 		},
@@ -89,9 +95,11 @@ func BuildContainer() (*dig.Container, error) {
 			retention requestlog.RetentionPolicyProvider,
 			quotaRuntime *accessquota.Runtime,
 			subscriptionCredentials *subscription.CredentialManager,
+			rpmStore *rpm.Store,
 		) *requestlog.Service {
 			service := requestlog.NewService(db, redactor, retention, quotaRuntime)
 			service.SetPassiveQuotaFlusher(subscriptionCredentials)
+			service.SetRPMStore(rpmStore)
 			return service
 		},
 		func(service *requestlog.Service) telemetry.RequestLogSink {
@@ -191,7 +199,11 @@ func BuildContainer() (*dig.Container, error) {
 		newProviderAdapterRegistry,
 		func(registry *provideradapter.Registry) execution.Executor { return registry },
 		func(runtime *bifrostexecutor.RuntimeManager) app.ExecutionRuntime { return runtime },
-		gateway.NewExecutionForwarder,
+		func(executor execution.Executor, store *rpm.Store) *gateway.ExecutionForwarder {
+			forwarder := gateway.NewExecutionForwarder(executor)
+			forwarder.SetRPMStore(store)
+			return forwarder
+		},
 		func(forwarder *gateway.ExecutionForwarder) gateway.AttemptForwarder { return forwarder },
 		gateway.NewHandlerWithLifecycle,
 		control.NewService,
