@@ -32,7 +32,7 @@ export function createModernRouter(
                       ? () => import('./features/usage/UsageView.vue')
                       : item.id === 'health'
                         ? () => import('./features/health/HealthView.vue')
-                          : () => import('./features/models/ModelsView.vue'),
+                        : () => import('./features/models/ModelsView.vue'),
         meta: { requiresAuth: true, adminOnly: item.adminOnly },
       })),
       {
