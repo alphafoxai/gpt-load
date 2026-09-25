@@ -33,6 +33,7 @@ type Storage struct {
 	Email            string `json:"email,omitempty"`
 	Plan             string `json:"plan,omitempty"`
 	PlanExpiresAt    *int64 `json:"plan_exp,omitempty"`
+	ProfileCheckedAt string `json:"profile_checked_at,omitempty"`
 	DevicePrivateKey string `json:"device_private_key,omitempty"`
 	RelayURL         string `json:"relay_url,omitempty"`
 	AdminURL         string `json:"admin_url,omitempty"`
@@ -196,6 +197,32 @@ func (s *Storage) RecordTokenTiming(accessToken string, expiresIn int64, now tim
 	now = now.UTC()
 	s.Expired = ResolveAccessTokenExpiry(accessToken, expiresIn, now).Format(time.RFC3339)
 	s.LastRefresh = now.Format(time.RFC3339)
+}
+
+// RecordProfile stores what the authentication service reports about the
+// account. The signed-in token's own claims are only a hint: /auth/me is the
+// authority for the address and plan a credential belongs to, so its answer
+// supersedes whatever the claims said.
+func (s *Storage) RecordProfile(email, plan string, planExpiresAt *int64, checkedAt time.Time) {
+	if s == nil {
+		return
+	}
+	if email = strings.TrimSpace(email); email != "" {
+		s.Email = email
+	}
+	if plan = strings.TrimSpace(plan); plan != "" {
+		s.Plan = plan
+		s.PlanExpiresAt = cloneInt64(planExpiresAt)
+	}
+	if checkedAt.IsZero() {
+		checkedAt = time.Now()
+	}
+	s.ProfileCheckedAt = checkedAt.UTC().Format(time.RFC3339)
+}
+
+func (s Storage) ProfileCheckTime() time.Time {
+	parsed, _ := parseTimestamp(s.ProfileCheckedAt)
+	return parsed
 }
 
 func (s Storage) AccessTokenExpiry(now time.Time) time.Time {
