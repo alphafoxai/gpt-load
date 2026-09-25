@@ -412,14 +412,14 @@ func (e *CodexHTTPExecutor) ExecuteCanonical(ctx context.Context, credentialID s
 	}, codexExecutionOptions(request, format, false))
 	if err != nil {
 		return ExecuteResponse{
-			Headers:                observation.withRoutingHeaders(nil),
+			Headers:                observation.responseHeaders(),
 			AppliedReasoningEffort: observation.reasoningEffort(),
 			UpstreamRequestPath:    observation.upstreamRequestPath(),
 			QuotaSignals:           observation.quotaSignalObservation(),
 		}, err
 	}
 	return ExecuteResponse{
-		Payload: append([]byte(nil), response.Payload...), Headers: observation.withRoutingHeaders(response.Headers),
+		Payload: append([]byte(nil), response.Payload...), Headers: response.Headers.Clone(),
 		AppliedReasoningEffort: observation.reasoningEffort(),
 		UpstreamRequestPath:    observation.upstreamRequestPath(),
 		QuotaSignals:           observation.quotaSignalObservation(),
@@ -507,7 +507,7 @@ func (e *CodexHTTPExecutor) ExecuteStreamCanonical(ctx context.Context, credenti
 	}, codexExecutionOptions(request, format, true))
 	if err != nil {
 		return &ExecuteStreamResponse{
-			Headers:                observation.withRoutingHeaders(nil),
+			Headers:                observation.responseHeaders(),
 			AppliedReasoningEffort: observation.reasoningEffort(),
 			UpstreamRequestPath:    observation.upstreamRequestPath(),
 			QuotaSignals:           observation.quotaSignalObservation(),
@@ -525,7 +525,7 @@ func (e *CodexHTTPExecutor) ExecuteStreamCanonical(ctx context.Context, credenti
 		}
 	}()
 	return &ExecuteStreamResponse{
-		Headers: observation.withRoutingHeaders(response.Headers), Chunks: chunks,
+		Headers: response.Headers.Clone(), Chunks: chunks,
 		AppliedReasoningEffort: observation.reasoningEffort(),
 		UpstreamRequestPath:    observation.upstreamRequestPath(),
 		QuotaSignals:           observation.quotaSignalObservation(),
@@ -820,7 +820,6 @@ func (t noRedirectRoundTripper) RoundTrip(req *http.Request) (*http.Response, er
 	}
 	if t.observation != nil {
 		t.observation.observeQuotaSignals(resp.Header, time.Now())
-		t.observation.observeRoutingHeaders(resp.Header)
 	}
 	if resp.StatusCode >= 300 && resp.StatusCode < 400 && resp.Header.Get("Location") != "" {
 		_ = resp.Body.Close()
@@ -838,16 +837,6 @@ type executionObservation struct {
 	observedRequestPath string
 	quota               cliproxyauth.QuotaState
 	retryAfter          string
-	routing             http.Header
-}
-
-var capturedCodexRoutingHeaders = []string{
-	"Set-Cookie",
-	"Cf-Ray",
-	"X-Codex-Safety-Buffering-Enabled",
-	"X-Codex-Safety-Buffering-Faster-Model",
-	"X-Codex-Turn-State",
-	"X-Edge-Region",
 }
 
 func newExecutionObservation(request ExecuteRequest) *executionObservation {
@@ -940,27 +929,6 @@ func (o *executionObservation) observeQuotaSignals(header http.Header, observedA
 	o.mu.Unlock()
 }
 
-func (o *executionObservation) observeRoutingHeaders(header http.Header) {
-	if o == nil || header == nil {
-		return
-	}
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	if o.routing == nil {
-		o.routing = make(http.Header)
-	}
-	for _, name := range capturedCodexRoutingHeaders {
-		values := header.Values(name)
-		if len(values) == 0 {
-			continue
-		}
-		o.routing.Del(name)
-		for _, value := range values {
-			o.routing.Add(name, value)
-		}
-	}
-}
-
 func (o *executionObservation) responseHeaders() http.Header {
 	if o == nil {
 		return make(http.Header)
@@ -972,37 +940,6 @@ func (o *executionObservation) responseHeaders() http.Header {
 		header.Set("Retry-After", o.retryAfter)
 	}
 	return header
-}
-
-func (o *executionObservation) withRoutingHeaders(dst http.Header) http.Header {
-	out := dst.Clone()
-	if out == nil {
-		out = make(http.Header)
-	}
-	if o == nil {
-		return out
-	}
-	o.mu.RLock()
-	defer o.mu.RUnlock()
-	if o.retryAfter != "" && out.Get("Retry-After") == "" {
-		out.Set("Retry-After", o.retryAfter)
-	}
-	for name, values := range o.routing {
-		if strings.EqualFold(name, "Set-Cookie") {
-			out.Del("Set-Cookie")
-			for _, value := range values {
-				out.Add("Set-Cookie", value)
-			}
-			continue
-		}
-		if out.Get(name) != "" {
-			continue
-		}
-		for _, value := range values {
-			out.Add(name, value)
-		}
-	}
-	return out
 }
 
 func (o *executionObservation) quotaSignalObservation() QuotaSignalObservation {

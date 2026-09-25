@@ -79,7 +79,6 @@ func (a *Adapter) OpenWebsocket(ctx context.Context, spec execution.AttemptSpec)
 	if headers == nil {
 		headers = make(http.Header)
 	}
-	a.applyCodexRouting(ctx, spec, headers)
 	spec.Header = headers
 	observationSpec := execution.AttemptSpec{
 		ChannelID: spec.ChannelID, UpstreamModel: spec.UpstreamModel,
@@ -129,7 +128,6 @@ func (s *observedWebsocketSession) observeHeaders(headers http.Header, observedA
 	windows := codex.NormalizePassiveQuotaWindows(signals, observedAt)
 	s.handshake = subscription.PassiveQuotaSample{ObservedAtMS: observedAt.UnixMilli(), Windows: windows}
 	s.adapter.recordPassiveQuotaObservation(s.spec, observedAt, windows)
-	s.adapter.observeCodexRouting(context.Background(), s.spec, headers, 0)
 }
 
 func (*codexProviderBridge) openWebsocket(spec execution.AttemptSpec, credential providerCredential, baseURL, proxyURL string, observeHeaders func(http.Header, time.Time)) (execution.WebsocketSession, error) {
