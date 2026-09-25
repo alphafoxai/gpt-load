@@ -584,6 +584,7 @@ defineExpose({
             @update:model-value="updateCallback(active.id, $event)"
             @submit="callback(active)"
             @restart="authorize(active.id)"
+            @completed="status.confirm($event)"
           />
         </template>
         <template v-else>

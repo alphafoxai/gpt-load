@@ -73,6 +73,20 @@ func (s *Server) HTTPModule() httproute.Module {
 				s.handleCredentialAuthorizationCallback,
 			),
 			controlRoute(
+				"control.credential-stages.email-code",
+				http.MethodPost,
+				"/credential-stages/:stage_id/email-code",
+				s.auditMutation(newMutationDescriptor("credential_stage_email_code", "credential_stage", credentialStageMutationLocator)),
+				s.handleSendCredentialEmailCode,
+			),
+			controlRoute(
+				"control.credential-stages.email-verify",
+				http.MethodPost,
+				"/credential-stages/:stage_id/email-verify",
+				s.auditMutation(newMutationDescriptor("credential_stage_email_verify", "credential_stage", credentialStageMutationLocator)),
+				s.handleVerifyCredentialEmailCode,
+			),
+			controlRoute(
 				"control.credential-stages.device-poll",
 				http.MethodPost,
 				"/credential-stages/:stage_id/device-poll",

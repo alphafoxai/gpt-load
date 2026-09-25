@@ -11,6 +11,8 @@ import {
   cancelCredentialStage,
   completeCredentialAuthorization,
   getCredentialStage,
+  sendCredentialEmailCode,
+  verifyCredentialEmailCode,
   importCredentialBatch,
   pollCredentialDeviceAuthorization,
   type CredentialStageNetworkInput,
@@ -115,10 +117,13 @@ const emit = defineEmits<{
 }>()
 const client = useApiClient()
 const { locale, n, t } = useI18n()
-const busyAction = ref<'authorize' | 'import' | `callback:${string}` | ''>('')
+const busyAction = ref<'authorize' | 'import' | `callback:${string}` | `email:${string}` | ''>('')
 const feedbackKey = ref('')
 const oauthJSON = ref('')
 const callbackURLs = ref<Record<string, string>>({})
+const emailAddresses = ref<Record<string, string>>({})
+const emailCodes = ref<Record<string, string>>({})
+const emailFeedback = ref<Record<string, string>>({})
 const callbackErrorKeys = ref<Record<string, string>>({})
 // 弹窗被拦截时授权已经开始，唯一出路是手动打开链接，这里额外提示一句。
 const popupBlockedStages = ref<Record<string, boolean>>({})
@@ -204,6 +209,8 @@ function replaceStage(stage: CredentialStage): void {
     ? {
         ...stage,
         authorization_url: stage.authorization_url ?? existing.authorization_url,
+        login_providers: stage.login_providers ?? existing.login_providers,
+        email_login: stage.email_login ?? existing.email_login,
         redirect_uri: stage.redirect_uri ?? existing.redirect_uri,
         authorization_method: stage.authorization_method ?? existing.authorization_method,
         user_code: stage.user_code ?? existing.user_code,
@@ -496,6 +503,42 @@ async function importFiles(files: File[], pasted = false): Promise<void> {
   }
 }
 
+function emailFeedbackKey(cause: unknown): string {
+  if (cause instanceof ApiError) {
+    if (cause.code === 'EMAIL_LOGIN_LIMITED') return 'import.subscription.emailLimited'
+    if (cause.code === 'EMAIL_LOGIN_REJECTED') return 'import.subscription.emailRejected'
+    if (cause.code === 'VALIDATION_FAILED') return 'import.subscription.emailInvalid'
+  }
+  return 'import.subscription.emailFailed'
+}
+async function sendEmailCode(stage: CredentialStage): Promise<void> {
+  const email = emailAddresses.value[stage.stage_id]?.trim() ?? ''
+  if (!email || props.disabled || busyAction.value) return
+  busyAction.value = `email:${stage.stage_id}`
+  emailFeedback.value = { ...emailFeedback.value, [stage.stage_id]: '' }
+  try {
+    await sendCredentialEmailCode(client, stage.stage_id, email)
+    emailFeedback.value = { ...emailFeedback.value, [stage.stage_id]: 'import.subscription.emailSent' }
+  } catch (cause) {
+    emailFeedback.value = { ...emailFeedback.value, [stage.stage_id]: emailFeedbackKey(cause) }
+  } finally {
+    busyAction.value = ''
+  }
+}
+async function verifyEmailCode(stage: CredentialStage): Promise<void> {
+  const email = emailAddresses.value[stage.stage_id]?.trim() ?? ''
+  const code = emailCodes.value[stage.stage_id]?.trim() ?? ''
+  if (!email || !code || props.disabled || busyAction.value) return
+  busyAction.value = `email:${stage.stage_id}`
+  emailFeedback.value = { ...emailFeedback.value, [stage.stage_id]: '' }
+  try {
+    replaceStage(await verifyCredentialEmailCode(client, stage.stage_id, email, code))
+  } catch (cause) {
+    emailFeedback.value = { ...emailFeedback.value, [stage.stage_id]: emailFeedbackKey(cause) }
+  } finally {
+    busyAction.value = ''
+  }
+}
 async function submitCallback(stage: CredentialStage): Promise<void> {
   const callbackURL = callbackURLs.value[stage.stage_id]?.trim() ?? ''
   if (!callbackURL || props.disabled || busyAction.value) return
@@ -833,6 +876,80 @@ onBeforeUnmount(() => {
                 : t('import.subscription.manualHint', { redirectUri: callbackEndpoint(stage) })
             }}
           </p>
+
+          <div
+            v-if="(stage.login_providers?.length ?? 0) > 1"
+            class="subscription-stager__link-field"
+          >
+            <span class="subscription-stager__field-label">{{ t('import.subscription.providerLogin') }}</span>
+            <div class="subscription-stager__authorization-link">
+              <a
+                v-for="provider in stage.login_providers"
+                :key="provider.id"
+                :href="provider.url"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <ExternalLink :size="15" aria-hidden="true" />
+                <span>{{ provider.label }}</span>
+              </a>
+            </div>
+          </div>
+
+          <form
+            v-if="stage.email_login"
+            class="subscription-stager__callback"
+            @submit.prevent="verifyEmailCode(stage)"
+          >
+            <FormField
+              :id="`mirasim-email-${stage.stage_id}`"
+              :label="t('import.subscription.emailAddress')"
+              size="compact"
+            >
+              <template #default>
+                <input
+                  :id="`mirasim-email-${stage.stage_id}`"
+                  v-model="emailAddresses[stage.stage_id]"
+                  type="email"
+                  autocomplete="email"
+                  spellcheck="false"
+                />
+              </template>
+            </FormField>
+            <AppButton
+              type="button"
+              size="compact"
+              :disabled="disabled || Boolean(busyAction) || !emailAddresses[stage.stage_id]?.trim()"
+              :busy="busyAction === `email:${stage.stage_id}`"
+              @click="sendEmailCode(stage)"
+            >
+              {{ t('import.subscription.emailSend') }}
+            </AppButton>
+            <FormField
+              :id="`mirasim-code-${stage.stage_id}`"
+              :label="t('import.subscription.emailCode')"
+              :error="emailFeedback[stage.stage_id] && emailFeedback[stage.stage_id] !== 'import.subscription.emailSent' ? t(emailFeedback[stage.stage_id]) : undefined"
+              :description="emailFeedback[stage.stage_id] === 'import.subscription.emailSent' ? t(emailFeedback[stage.stage_id]) : t('import.subscription.emailStep')"
+              size="compact"
+            >
+              <template #default>
+                <input
+                  :id="`mirasim-code-${stage.stage_id}`"
+                  v-model="emailCodes[stage.stage_id]"
+                  autocomplete="one-time-code"
+                  spellcheck="false"
+                />
+              </template>
+            </FormField>
+            <AppButton
+              type="submit"
+              size="compact"
+              :disabled="disabled || Boolean(busyAction) || !emailAddresses[stage.stage_id]?.trim() || !emailCodes[stage.stage_id]?.trim()"
+              :busy="busyAction === `email:${stage.stage_id}`"
+            >
+              {{ t('import.subscription.emailVerify') }}
+            </AppButton>
+          </form>
 
           <div class="subscription-stager__link-field">
             <span class="subscription-stager__field-label">
