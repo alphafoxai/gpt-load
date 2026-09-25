@@ -44,6 +44,7 @@ func (*driver) Refresh(ctx context.Context, current subscriptionruntime.Credenti
 	if err != nil {
 		return subscriptionruntime.Credential{}, err
 	}
+	refreshAccountProfile(ctx, &refreshed)
 	return runtimeCredential(refreshed)
 }
 
@@ -94,7 +95,7 @@ func (*driver) LocalCallback() (subscriptionruntime.LocalCallbackSpec, bool) {
 	return subscriptionruntime.LocalCallbackSpec{RedirectURI: CallbackRedirectURI}, true
 }
 
-func (*driver) CompleteAuthorization(_ context.Context, completion subscriptionruntime.AuthorizationCompletion) (subscriptionruntime.Credential, error) {
+func (*driver) CompleteAuthorization(ctx context.Context, completion subscriptionruntime.AuthorizationCompletion) (subscriptionruntime.Credential, error) {
 	if completion.ExpectedState == "" || completion.ExpectedState != completion.ReturnedState {
 		return subscriptionruntime.Credential{}, errInvalidOAuthState
 	}
@@ -109,7 +110,33 @@ func (*driver) CompleteAuthorization(_ context.Context, completion subscriptionr
 	if err != nil {
 		return subscriptionruntime.Credential{}, err
 	}
+	// The official client treats /auth/me as best-effort during login: capture
+	// the account's plan state when the service is reachable, then let the
+	// signed relay call below decide whether the credential is kept.
+	refreshAccountProfile(ctx, &value)
+	if err := NewClient(value).ValidateRemote(ctx); err != nil {
+		return subscriptionruntime.Credential{}, err
+	}
 	return runtimeCredential(value)
+}
+
+// refreshAccountProfile records what the authentication service reports about
+// the account. A stale answer is only worth re-reading after
+// profileRefreshInterval; an unreachable service leaves the token's own claims
+// in place rather than failing the caller.
+func refreshAccountProfile(ctx context.Context, storage *Storage) {
+	if storage == nil {
+		return
+	}
+	now := time.Now().UTC()
+	if checkedAt := storage.ProfileCheckTime(); !checkedAt.IsZero() && now.Before(checkedAt.Add(profileRefreshInterval)) {
+		return
+	}
+	profile, err := NewClient(*storage).FetchAccountProfile(ctx)
+	if err != nil {
+		return
+	}
+	storage.RecordProfile(profile.Email, profile.Plan, profile.PlanExpiresAt, now)
 }
 
 func (*driver) AuthorizationFailureDefinitive(err error) bool {
