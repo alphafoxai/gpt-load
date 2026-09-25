@@ -72,20 +72,22 @@ func NormalizeObservation(email, plan string, limits Limits) ([]byte, error) {
 	return json.Marshal(summary)
 }
 
+// planSummary names the plan an account is on. A plan the account service
+// reports by name is authoritative: the relay's own paid flag is not a tier
+// (an account on the max plan reports paid=false), so it is only consulted when
+// no name is available.
 func planSummary(plan string, paid *bool) providerobservation.PlanSummary {
-	name := strings.TrimSpace(plan)
-	level := providerobservation.PlanLevelStandard
-	if paid != nil && !*paid || strings.Contains(strings.ToLower(name), "free") {
-		level = providerobservation.PlanLevelFree
-	}
-	if name == "" {
-		if level == providerobservation.PlanLevelFree {
-			name = "free"
-		} else {
-			name = "paid"
+	if name := strings.TrimSpace(plan); name != "" {
+		level := providerobservation.PlanLevelStandard
+		if strings.Contains(strings.ToLower(name), "free") {
+			level = providerobservation.PlanLevelFree
 		}
+		return providerobservation.PlanSummary{Name: name, Level: level}
 	}
-	return providerobservation.PlanSummary{Name: name, Level: level}
+	if paid != nil && !*paid {
+		return providerobservation.PlanSummary{Name: "free", Level: providerobservation.PlanLevelFree}
+	}
+	return providerobservation.PlanSummary{Name: "paid", Level: providerobservation.PlanLevelStandard}
 }
 
 func hasPrimary(windows []providerobservation.QuotaWindow) bool {
