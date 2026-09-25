@@ -192,6 +192,9 @@ func translateNonStream(ctx context.Context, from, to sdktranslator.Format, mode
 	if !registry.HasNonStreamResponseTransformer(to, from) {
 		return nil, fmt.Errorf("Mirasim executor cannot translate response %s -> %s", from, to)
 	}
+	if from == sdktranslator.FormatClaude {
+		body = claudeJSONMessageAsSSE(body)
+	}
 	var state any
 	return registry.TranslateNonStream(ctx, from, to, model, originalRequest, translatedRequest, body, &state), nil
 }
