@@ -5,6 +5,7 @@ import { InvalidResponseError } from '@shared/http/errors'
 import {
   assertNoSecretLikeFields,
   projectArray,
+  projectBoolean,
   projectEpochMilliseconds,
   projectEnum,
   projectHTTPURL,
@@ -29,11 +30,19 @@ export interface CredentialStageAccount {
   last_refresh_at_ms?: number
 }
 
+export interface CredentialLoginProvider {
+  id: string
+  label: string
+  url: string
+}
+
 export interface CredentialStage {
   stage_id: string
   status: CredentialStageStatus
   authorization_method?: 'browser_oauth' | 'device_oauth' | 'oauth_file'
   authorization_url?: string
+  login_providers?: CredentialLoginProvider[]
+  email_login?: boolean
   redirect_uri?: string
   user_code?: string
   next_poll_at_ms?: number
@@ -78,6 +87,8 @@ const stageFields = [
   'status',
   'authorization_method',
   'authorization_url',
+  'login_providers',
+  'email_login',
   'redirect_uri',
   'user_code',
   'next_poll_at_ms',
@@ -129,11 +140,28 @@ function projectInternalErrorCode(value: unknown): string {
   return code
 }
 
+function projectLoginProvider(value: unknown): CredentialLoginProvider {
+  const provider = projectRecord(value)
+  assertNoSecretLikeFields(provider, ['id', 'label', 'url'])
+  const id = projectString(provider.id)
+  const label = projectString(provider.label)
+  if (!/^[a-z][a-z0-9_-]{0,63}$/u.test(id) || label.trim() === '' || label.length > 64) {
+    invalidResponse()
+  }
+  return { id, label, url: projectHTTPURL(provider.url) }
+}
+
 export function projectCredentialStage(value: unknown): CredentialStage {
   const record = projectRecord(value)
   assertNoSecretLikeFields(record, stageFields)
   const authorizationURL =
     record.authorization_url === undefined ? undefined : projectHTTPURL(record.authorization_url)
+  const loginProviders =
+    record.login_providers === undefined
+      ? undefined
+      : projectArray(record.login_providers, projectLoginProvider)
+  const emailLogin =
+    record.email_login === undefined ? undefined : projectBoolean(record.email_login)
   const redirectURI =
     record.redirect_uri === undefined ? undefined : projectHTTPURL(record.redirect_uri)
   const authorizationMethod =
@@ -152,6 +180,8 @@ export function projectCredentialStage(value: unknown): CredentialStage {
     status: projectEnum(record.status, stageStatuses),
     ...(authorizationMethod === undefined ? {} : { authorization_method: authorizationMethod }),
     ...(authorizationURL === undefined ? {} : { authorization_url: authorizationURL }),
+    ...(loginProviders === undefined ? {} : { login_providers: loginProviders }),
+    ...(emailLogin === undefined ? {} : { email_login: emailLogin }),
     ...(redirectURI === undefined ? {} : { redirect_uri: redirectURI }),
     ...(userCode === undefined ? {} : { user_code: userCode }),
     ...(record.next_poll_at_ms === undefined
@@ -247,6 +277,37 @@ export async function beginCredentialAuthorization(
     await client.request('/api/credential-stages/authorizations', {
       method: 'POST',
       json: { channel_id: channelID, ...network },
+      signal,
+    }),
+  )
+}
+
+export async function sendCredentialEmailCode(
+  client: ApiClient,
+  stageID: string,
+  email: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  const id = projectStageID(stageID)
+  await client.request(`/api/credential-stages/${id}/email-code`, {
+    method: 'POST',
+    json: { email },
+    signal,
+  })
+}
+
+export async function verifyCredentialEmailCode(
+  client: ApiClient,
+  stageID: string,
+  email: string,
+  code: string,
+  signal?: AbortSignal,
+): Promise<CredentialStage> {
+  const id = projectStageID(stageID)
+  return projectCredentialStage(
+    await client.request(`/api/credential-stages/${id}/email-verify`, {
+      method: 'POST',
+      json: { email, code },
       signal,
     }),
   )

@@ -157,6 +157,46 @@ func (s *Server) handleCredentialAuthorizationCallback(c *gin.Context) {
 	response.SuccessI18n(c, "common.success", result)
 }
 
+type credentialEmailCodeRequest struct {
+	Email string `json:"email"`
+}
+
+type credentialEmailVerifyRequest struct {
+	Email string `json:"email"`
+	Code  string `json:"code"`
+}
+
+func (s *Server) handleSendCredentialEmailCode(c *gin.Context) {
+	var request credentialEmailCodeRequest
+	if err := bindStrictJSON(c, &request); err != nil {
+		writeServiceError(c, "send_credential_email_code", mapControlJSONError(err))
+		return
+	}
+	if err := s.service.SendCredentialEmailCode(c.Request.Context(), strings.TrimSpace(c.Param("stage_id")), request.Email); err != nil {
+		writeServiceError(c, "send_credential_email_code", err)
+		return
+	}
+	setSecretResponseHeaders(c)
+	response.SuccessI18n(c, "common.success", gin.H{"status": "sent"})
+}
+
+func (s *Server) handleVerifyCredentialEmailCode(c *gin.Context) {
+	var request credentialEmailVerifyRequest
+	if err := bindStrictJSON(c, &request); err != nil {
+		writeServiceError(c, "verify_credential_email_code", mapControlJSONError(err))
+		return
+	}
+	result, err := s.service.VerifyCredentialEmailCode(
+		c.Request.Context(), strings.TrimSpace(c.Param("stage_id")), request.Email, request.Code,
+	)
+	if err != nil {
+		writeServiceError(c, "verify_credential_email_code", err)
+		return
+	}
+	setSecretResponseHeaders(c)
+	response.SuccessI18n(c, "common.success", result)
+}
+
 func (s *Server) handlePollCredentialDeviceAuthorization(c *gin.Context) {
 	result, err := s.service.PollCredentialDeviceAuthorization(
 		c.Request.Context(), strings.TrimSpace(c.Param("stage_id")),

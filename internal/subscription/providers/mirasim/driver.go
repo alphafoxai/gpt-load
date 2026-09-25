@@ -85,8 +85,15 @@ func (*driver) BeginAuthorization() (subscriptionruntime.Authorization, error) {
 	if err != nil {
 		return subscriptionruntime.Authorization{}, err
 	}
+	providers := make([]subscriptionruntime.AuthorizationProvider, 0, len(login.Providers))
+	for _, provider := range login.Providers {
+		providers = append(providers, subscriptionruntime.AuthorizationProvider{
+			ID: provider.ID, Label: provider.Label, URL: provider.URL,
+		})
+	}
 	return subscriptionruntime.Authorization{
-		URL: login.URL, State: login.State, DriverState: login.DriverState, ExpiresAt: login.ExpiresAt,
+		URL: login.URL, Providers: providers, EmailLogin: true,
+		State: login.State, DriverState: login.DriverState, ExpiresAt: login.ExpiresAt,
 	}, nil
 }
 

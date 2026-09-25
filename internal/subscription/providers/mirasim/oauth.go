@@ -26,8 +26,15 @@ const (
 
 var providerSlug = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,63}$`)
 
+type oauthLoginProvider struct {
+	ID    string
+	Label string
+	URL   string
+}
+
 type oauthLogin struct {
 	URL         string
+	Providers   []oauthLoginProvider
 	State       string
 	DriverState []byte
 	ExpiresAt   time.Time
@@ -51,13 +58,9 @@ func BeginBrowserLogin(ctx context.Context, adminURL string) (oauthLogin, error)
 	if _, err := adminBaseURL(adminURL); err != nil {
 		return oauthLogin{}, err
 	}
-	providers, err := discoverLoginProviders(ctx, adminURL)
+	offered, err := discoverLoginProviders(ctx, adminURL)
 	if err != nil {
 		return oauthLogin{}, err
-	}
-	provider := defaultLoginProvider
-	if !providerOffered(providers, provider) {
-		provider = providers[0]
 	}
 	state, err := randomOAuthValue(32)
 	if err != nil {
@@ -72,9 +75,20 @@ func BeginBrowserLogin(ctx context.Context, adminURL string) (oauthLogin, error)
 		return oauthLogin{}, err
 	}
 	callback.RawQuery = url.Values{"state": []string{state}}.Encode()
-	authURL, err := buildMirasimOAuthURL(adminURL, provider, callback.String(), state)
-	if err != nil {
-		return oauthLogin{}, err
+	providers := make([]oauthLoginProvider, 0, len(offered))
+	var authURL string
+	for _, id := range offered {
+		link, err := buildMirasimOAuthURL(adminURL, id, callback.String(), state)
+		if err != nil {
+			return oauthLogin{}, err
+		}
+		providers = append(providers, oauthLoginProvider{ID: id, Label: providerLabel(id), URL: link})
+		if authURL == "" || id == defaultLoginProvider {
+			authURL = link
+		}
+	}
+	if authURL == "" {
+		return oauthLogin{}, fmt.Errorf("Mirasim offered no sign-in providers")
 	}
 	encoded, err := json.Marshal(oauthDriverState{
 		DevicePrivateKey: strings.TrimSpace(string(deviceKey)),
@@ -86,7 +100,7 @@ func BeginBrowserLogin(ctx context.Context, adminURL string) (oauthLogin, error)
 		return oauthLogin{}, err
 	}
 	return oauthLogin{
-		URL: authURL, State: state, DriverState: encoded,
+		URL: authURL, Providers: providers, State: state, DriverState: encoded,
 		ExpiresAt: time.Now().Add(oauthLoginTTL),
 	}, nil
 }
@@ -145,13 +159,15 @@ func discoverLoginProviders(ctx context.Context, adminURL string) ([]string, err
 	return providers, nil
 }
 
-func providerOffered(providers []string, id string) bool {
-	for _, provider := range providers {
-		if provider == id {
-			return true
-		}
+func providerLabel(id string) string {
+	switch id {
+	case "github":
+		return "GitHub"
+	case "google":
+		return "Google"
+	default:
+		return id
 	}
-	return false
 }
 
 func buildMirasimOAuthURL(adminURL, provider, callbackURL, state string) (string, error) {

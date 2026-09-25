@@ -2,15 +2,22 @@
 import { ExternalLink, Send } from '@lucide/vue'
 import { computed, nextTick, onScopeDispose, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { CredentialStage } from '@modern/api/credential-stages'
+import {
+  sendCredentialEmailCode,
+  verifyCredentialEmailCode,
+  type CredentialStage,
+} from '@modern/api/credential-stages'
 import {
   AppButton,
   AppCopyValue,
   AppExternalLink,
   AppIcon,
   AppTextArea,
+  AppTextField,
 } from '@modern/components/ui'
 import { copyText } from '@modern/components/ui/clipboard'
+import { useApiClient } from '@shared/http/client-context'
+import { ApiError } from '@shared/http/errors'
 
 const props = defineProps<{
   stage: CredentialStage
@@ -23,8 +30,16 @@ const emit = defineEmits<{
   'update:modelValue': [value: string]
   submit: []
   restart: []
+  completed: [stage: CredentialStage]
 }>()
 const { t } = useI18n()
+const client = useApiClient()
+const emailAddress = ref('')
+const emailCode = ref('')
+const emailError = ref('')
+const emailNotice = ref('')
+const emailBusy = ref(false)
+const providers = computed(() => props.stage.loginProviders ?? [])
 const copying = ref(false)
 const copyState = ref<'idle' | 'success' | 'manual'>('idle')
 const manualCopy = ref<InstanceType<typeof AppTextArea>>()
@@ -76,6 +91,53 @@ const placeholder = computed(() => {
   if (!endpoint) return t('subscriptions.callbackPlaceholder')
   return `${endpoint}${endpoint.includes('?') ? '&' : '?'}state=…`
 })
+function emailFailure(cause: unknown): string {
+  if (cause instanceof ApiError) {
+    if (cause.code === 'EMAIL_LOGIN_LIMITED') return t('subscriptions.emailLimited')
+    if (cause.code === 'EMAIL_LOGIN_REJECTED') return t('subscriptions.emailRejected')
+    if (cause.code === 'VALIDATION_FAILED') return t('subscriptions.emailInvalid')
+  }
+  return t('subscriptions.emailFailed')
+}
+async function sendEmailCode(): Promise<void> {
+  if (props.disabled || emailBusy.value || !emailAddress.value.trim()) return
+  emailBusy.value = true
+  emailError.value = ''
+  emailNotice.value = ''
+  try {
+    await sendCredentialEmailCode(
+      client,
+      props.stage.id,
+      emailAddress.value.trim(),
+      new AbortController().signal,
+    )
+    emailNotice.value = t('subscriptions.emailSent')
+  } catch (cause) {
+    emailError.value = emailFailure(cause)
+  } finally {
+    emailBusy.value = false
+  }
+}
+async function verifyEmailCode(): Promise<void> {
+  if (props.disabled || emailBusy.value || !emailAddress.value.trim() || !emailCode.value.trim())
+    return
+  emailBusy.value = true
+  emailError.value = ''
+  try {
+    const stage = await verifyCredentialEmailCode(
+      client,
+      props.stage.id,
+      emailAddress.value.trim(),
+      emailCode.value.trim(),
+      new AbortController().signal,
+    )
+    emit('completed', stage)
+  } catch (cause) {
+    emailError.value = emailFailure(cause)
+  } finally {
+    emailBusy.value = false
+  }
+}
 async function submitPastedCallback(): Promise<void> {
   await nextTick()
   if (!props.disabled && props.modelValue.trim()) emit('submit')
@@ -87,7 +149,20 @@ async function submitPastedCallback(): Promise<void> {
     <section class="modern-subscription-auth-step">
       <div class="modern-subscription-auth-heading">
         <h4><span aria-hidden="true">1</span>{{ t('subscriptions.linkStep') }}</h4>
-        <div v-if="stage.authorizationURL" class="modern-subscription-link-actions">
+        <div v-if="providers.length > 1" class="modern-subscription-link-actions">
+          <AppButton
+            v-for="provider in providers"
+            :key="provider.id"
+            variant="outline"
+            size="sm"
+            as-child
+          >
+            <AppExternalLink :href="provider.url">
+              <AppIcon :icon="ExternalLink" size="sm" />{{ t('subscriptions.providerLogin', { provider: provider.label }) }}
+            </AppExternalLink>
+          </AppButton>
+        </div>
+        <div v-else-if="stage.authorizationURL" class="modern-subscription-link-actions">
           <AppButton
             variant="outline"
             size="sm"
@@ -125,13 +200,51 @@ async function submitPastedCallback(): Promise<void> {
         readonly
         spellcheck="false"
       />
-      <div v-if="stage.authorizationURL" class="modern-subscription-auth-url">
+      <div v-if="providers.length <= 1 && stage.authorizationURL" class="modern-subscription-auth-url">
         <AppCopyValue
           :value="stage.authorizationURL"
           :label="t('subscriptions.copyAuthorization')"
           wrap
         />
       </div>
+    </section>
+    <section v-if="stage.emailLogin" class="modern-subscription-auth-step">
+      <h4>{{ t('subscriptions.emailStep') }}</h4>
+      <AppTextField
+        v-model="emailAddress"
+        type="email"
+        :label="t('subscriptions.emailAddress')"
+        :disabled="disabled || emailBusy"
+        autocomplete="email"
+        spellcheck="false"
+      />
+      <div class="modern-subscription-link-actions">
+        <AppButton
+          variant="outline"
+          size="sm"
+          :loading="emailBusy"
+          :disabled="disabled || !emailAddress.trim()"
+          @click="sendEmailCode"
+          >{{ t('subscriptions.emailSend') }}</AppButton
+        >
+      </div>
+      <AppTextField
+        v-model="emailCode"
+        :label="t('subscriptions.emailCode')"
+        :disabled="disabled || emailBusy"
+        autocomplete="one-time-code"
+        spellcheck="false"
+      />
+      <AppButton
+        variant="primary"
+        size="sm"
+        :loading="emailBusy"
+        :disabled="disabled || !emailAddress.trim() || !emailCode.trim()"
+        @click="verifyEmailCode"
+        >{{ t('subscriptions.emailVerify') }}</AppButton
+      >
+      <p v-if="emailNotice" class="modern-subscription-auth-help">{{ emailNotice }}</p>
+      <p v-if="emailError" class="modern-subscription-auth-help">{{ emailError }}</p>
     </section>
     <section class="modern-subscription-auth-step">
       <h4>
