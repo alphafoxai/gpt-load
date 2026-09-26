@@ -39,6 +39,15 @@ const (
 	Jev              ID = "jev"
 	Groq             ID = "groq"
 	XAI              ID = "xai"
+	Cerebras         ID = "cerebras"
+	Mistral          ID = "mistral"
+	Nebius           ID = "nebius"
+	Parasail         ID = "parasail"
+	Wafer            ID = "wafer"
+	HuggingFace      ID = "huggingface"
+	Cohere           ID = "cohere"
+	OpenCodeGo       ID = "opencode_go"
+	OpenCodeZen      ID = "opencode_zen"
 )
 
 // ProviderKind is the single dispatch key used to resolve a ProviderAdapter.

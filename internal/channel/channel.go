@@ -49,6 +49,15 @@ const (
 	Jev              = spec.Jev
 	Groq             = spec.Groq
 	XAI              = spec.XAI
+	Cerebras         = spec.Cerebras
+	Mistral          = spec.Mistral
+	Nebius           = spec.Nebius
+	Parasail         = spec.Parasail
+	Wafer            = spec.Wafer
+	HuggingFace      = spec.HuggingFace
+	Cohere           = spec.Cohere
+	OpenCodeGo       = spec.OpenCodeGo
+	OpenCodeZen      = spec.OpenCodeZen
 )
 
 // InputKind describes how a field is collected without exposing its value.
