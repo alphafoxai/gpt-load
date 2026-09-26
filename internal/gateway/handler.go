@@ -24,11 +24,13 @@ import (
 	"gpt-load/internal/execution"
 	"gpt-load/internal/health"
 	"gpt-load/internal/httplifecycle"
+	"gpt-load/internal/platform/config"
 	"gpt-load/internal/platform/contentcoding"
 	"gpt-load/internal/platform/encryption"
 	platformheader "gpt-load/internal/platform/httpheader"
 	"gpt-load/internal/platform/utils"
 	"gpt-load/internal/pricing"
+	"gpt-load/internal/protocol"
 	"gpt-load/internal/ratelimit"
 	"gpt-load/internal/requestaudit"
 	"gpt-load/internal/requestredact"
@@ -121,6 +123,9 @@ type Handler struct {
 	responseBindings    *state.ResponseBindings
 	websocketLimits     websocketLimits
 	websocketBudget     websocketBudget
+	liveOpener          execution.LiveOpener
+	liveSessions        *liveSessions
+	liveConfig          config.CodexLiveConfig
 }
 
 func (handler *Handler) freezeAttemptPricing(
@@ -178,6 +183,7 @@ func NewHandler(
 		affinityCache:    affinity.NewCache(),
 		responseBindings: state.NewResponseBindings(),
 		websocketLimits:  defaultWebsocketLimits(),
+		liveSessions:     newLiveSessions(),
 		newRequestID:     newRequestID,
 		requestNow:       time.Now,
 		now:              time.Now,
@@ -424,6 +430,10 @@ func (handler *Handler) Handle(ginContext *gin.Context) {
 	}
 	if requestContext.selectedRoute.Kind == endpointUsage {
 		handler.handleUsage(ginContext, requestContext)
+		return
+	}
+	if requestContext.selectedRoute.Protocol == protocol.CodexLive {
+		handler.handleCodexLive(ginContext, requestContext)
 		return
 	}
 	if websocketIntent(ginContext.Request) {
@@ -883,6 +893,7 @@ func (handler *Handler) executeAttempts(
 			handler.completeReason(ginContext, recorder, reasonRedactionFailed)
 			return
 		}
+		defer handler.logUnrestoredRedactionTokens(redactionCipher, recorder.requestID)
 	}
 	type deferredAttempt struct {
 		result        UpstreamResult
@@ -1242,9 +1253,13 @@ func (handler *Handler) executeAttempts(
 		if recorder != nil && recorder.requestID != "" {
 			executionRequestID = recorder.requestID
 		}
+		restoreCipher := redactionCipher
+		if !redactionMayRestore(prepared.request, snapshot.RequestRedaction.Reversible()) {
+			restoreCipher = nil
+		}
 		input := ForwardInput{
 			Dialect: selectedDialect, ObserveUsage: attemptObservations.ObserveUsage,
-			RedactionCipher: redactionCipher,
+			RedactionCipher: restoreCipher,
 			Group:           selection.Group, APIKey: normalizedCredential.apiKey,
 			CredentialSecrets: normalizedCredential.secrets, Request: prepared.request,
 			ExternalModel:            externalModel,
