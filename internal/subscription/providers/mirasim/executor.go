@@ -43,12 +43,19 @@ func (e *Executor) Execute(ctx context.Context, credential Storage, request Exec
 		return ExecuteResponse{}, err
 	}
 	credential = applyRelayOverride(credential, request.BaseURL)
+	if route.Format == sdktranslator.FormatClaude {
+		return e.executeClaudeAggregated(ctx, credential, request, body, route)
+	}
 	response, err := NewClient(credential).Do(ctx, http.MethodPost, route.Path, nil, requestHeaders(request.Headers, route.Format), body)
 	if err != nil {
 		return ExecuteResponse{}, err
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return ExecuteResponse{}, NewStatusError(response.StatusCode, response.Body, response.Header)
+		// The request did reach route.Path, so report it even though the attempt
+		// failed: callers derive the upstream wire protocol from this path, and a
+		// model-conditional channel has no safe static fallback.
+		return ExecuteResponse{UpstreamRequestPath: route.Path},
+			NewStatusError(response.StatusCode, response.Body, response.Header)
 	}
 	upstream := response.Body
 	if route.Format == sdktranslator.FormatCodex {
@@ -66,6 +73,59 @@ func (e *Executor) Execute(ctx context.Context, credential Storage, request Exec
 	return ExecuteResponse{StatusCode: response.StatusCode, Payload: payload, Headers: headers, UpstreamRequestPath: route.Path}, nil
 }
 
+// executeClaudeAggregated opens Claude Messages as SSE and returns one JSON body.
+// A non-streaming /v1/messages call does not send a status line until generation
+// finishes, and Mirasim's gateway answers that wait with HTTP 504 at 120s.
+// Codex already forces stream=true for the same reason.
+func (e *Executor) executeClaudeAggregated(ctx context.Context, credential Storage, request ExecuteRequest, body []byte, route providerRoute) (ExecuteResponse, error) {
+	headers := requestHeaders(request.Headers, route.Format)
+	if headers.Get("Content-Type") == "" {
+		headers.Set("Content-Type", "application/json")
+	}
+	response, stream, err := NewClient(credential).DoStream(ctx, http.MethodPost, route.Path, nil, headers, body)
+	if err != nil {
+		return ExecuteResponse{UpstreamRequestPath: route.Path}, err
+	}
+	defer stream.Close()
+	raw, err := readUpstreamBody(stream)
+	if err != nil {
+		return ExecuteResponse{UpstreamRequestPath: route.Path}, err
+	}
+	upstream, err := claudeNonStreamPayload(raw)
+	if err != nil {
+		return ExecuteResponse{UpstreamRequestPath: route.Path}, err
+	}
+	if responseFormat(request.Format) == sdktranslator.FormatClaude {
+		upstream, err = claudeSSEAsMessage(upstream)
+		if err != nil {
+			return ExecuteResponse{UpstreamRequestPath: route.Path}, err
+		}
+	}
+	payload, err := translateNonStream(ctx, route.Format, responseFormat(request.Format), normalizeModel(request.Model), request.OriginalRequest, body, upstream)
+	if err != nil {
+		return ExecuteResponse{UpstreamRequestPath: route.Path}, err
+	}
+	outHeaders := cloneHeader(response.Header)
+	outHeaders.Del("Content-Length")
+	outHeaders.Del("Content-Encoding")
+	outHeaders.Del("Transfer-Encoding")
+	outHeaders.Set("Content-Type", "application/json")
+	return ExecuteResponse{
+		StatusCode: response.StatusCode, Payload: payload, Headers: outHeaders, UpstreamRequestPath: route.Path,
+	}, nil
+}
+
+func readUpstreamBody(body io.Reader) ([]byte, error) {
+	raw, err := io.ReadAll(io.LimitReader(body, maxCodexEventBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("read Mirasim Claude response: %w", err)
+	}
+	if len(raw) > maxCodexEventBytes {
+		return nil, fmt.Errorf("Mirasim Claude response exceeds %d bytes", maxCodexEventBytes)
+	}
+	return raw, nil
+}
+
 func (e *Executor) ExecuteStream(ctx context.Context, credential Storage, request ExecuteRequest) (ExecuteResponse, io.ReadCloser, error) {
 	if e == nil {
 		return ExecuteResponse{}, nil, fmt.Errorf("Mirasim executor is unavailable")
@@ -77,7 +137,8 @@ func (e *Executor) ExecuteStream(ctx context.Context, credential Storage, reques
 	credential = applyRelayOverride(credential, request.BaseURL)
 	response, stream, err := NewClient(credential).DoStream(ctx, http.MethodPost, route.Path, nil, requestHeaders(request.Headers, route.Format), body)
 	if err != nil {
-		return ExecuteResponse{}, nil, err
+		// Same reasoning as Execute: a rejection still proves route.Path was used.
+		return ExecuteResponse{UpstreamRequestPath: route.Path}, nil, err
 	}
 	headers := cloneHeader(response.Header)
 	headers.Set("Content-Type", "text/event-stream")
@@ -140,6 +201,10 @@ func buildProviderRequest(request ExecuteRequest, stream bool) ([]byte, provider
 	model := normalizeModel(request.Model)
 	source := sdktranslator.FromString(strings.TrimSpace(request.Format))
 	wire := selectWireFormat(model)
+	// count_tokens does not use this function, so it stays non-streaming.
+	if wire == sdktranslator.FormatClaude {
+		stream = true
+	}
 	body, err := translateRequest(source, wire, model, request.Payload, stream)
 	if err != nil {
 		return nil, providerRoute{}, err
