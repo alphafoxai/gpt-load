@@ -36,6 +36,7 @@ const (
 	Alibaba          ID = "alibaba"
 	Volcengine       ID = "volcengine"
 	OpenRouter       ID = "openrouter"
+	Cline            ID = "cline"
 	Jev              ID = "jev"
 	Groq             ID = "groq"
 	XAI              ID = "xai"
@@ -64,6 +65,7 @@ const (
 	ProviderGemini               ProviderKind = "gemini"
 	ProviderMultiProtocolGateway ProviderKind = "multi_protocol_gateway"
 	ProviderOpenAICompatible     ProviderKind = "openai_compatible"
+	ProviderCline                ProviderKind = "cline"
 	ProviderAzureOpenAI          ProviderKind = "azure_openai"
 	ProviderAWSBedrock           ProviderKind = "aws_bedrock"
 	ProviderGoogleVertex         ProviderKind = "google_vertex"
@@ -116,6 +118,7 @@ func (kind ProviderKind) Valid() bool {
 		ProviderGemini,
 		ProviderMultiProtocolGateway,
 		ProviderOpenAICompatible,
+		ProviderCline,
 		ProviderAzureOpenAI,
 		ProviderAWSBedrock,
 		ProviderGoogleVertex,
