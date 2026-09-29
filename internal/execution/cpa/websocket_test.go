@@ -96,7 +96,9 @@ func TestWebsocketHTTPErrorEvidenceSurvivesCancellation(t *testing.T) {
 	}
 }
 
-func TestWebsocketUsageLimitUsesUpstreamModelCooldownDeadline(t *testing.T) {
+// The upstream reset is authoritative for what it answered, but the model must be
+// re-probed sooner than a hours-long window, so the stored deadline is capped.
+func TestWebsocketUsageLimitCapsUpstreamModelCooldown(t *testing.T) {
 	now := time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC)
 	evidence := codexWebsocketEvidence(t.Context(), &codex.WSError{
 		Code: "upstream_error", UpstreamType: "usage_limit_reached",
@@ -112,7 +114,7 @@ func TestWebsocketUsageLimitUsesUpstreamModelCooldownDeadline(t *testing.T) {
 		Evidence: evidence, Now: now,
 	}, health.DecisionContext{Method: http.MethodPost, Operation: execution.OperationResponsesCreate})
 	if decision.Effect != health.EffectCooldownModel || decision.Scope != execution.ErrorScopeModel ||
-		decision.RuleID != "rate_limit.retry_after" || !decision.CooldownUntil.Equal(now.Add(2*time.Hour)) {
+		decision.RuleID != "rate_limit.retry_after" || !decision.CooldownUntil.Equal(now.Add(health.MaxModelRateLimitCooldown)) {
 		t.Fatalf("usage-limit decision=%+v", decision)
 	}
 }

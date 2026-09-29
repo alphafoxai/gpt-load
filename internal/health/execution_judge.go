@@ -640,6 +640,9 @@ func rateLimitDecision(attempt ExecutionAttempt, decisionContext DecisionContext
 	if attempt.Evidence.RetryAfter > 0 {
 		result.CooldownUntil = attempt.Now.Add(attempt.Evidence.RetryAfter)
 		result.RuleID = "rate_limit.retry_after"
+		if modelScoped {
+			result.CooldownUntil = boundModelRateLimitCooldown(attempt.Now, result.CooldownUntil)
+		}
 		return result
 	}
 	header := attempt.Header
@@ -648,7 +651,7 @@ func rateLimitDecision(attempt ExecutionAttempt, decisionContext DecisionContext
 	}
 	if modelScoped {
 		if until, ok := ParseExplicitRetryAfter(header, attempt.Now); ok {
-			result.CooldownUntil, result.RuleID = until, "rate_limit.retry_after"
+			result.CooldownUntil, result.RuleID = boundModelRateLimitCooldown(attempt.Now, until), "rate_limit.retry_after"
 			return result
 		}
 	} else if until, ok := ParseRateLimitReset(header, attempt.Now); ok {

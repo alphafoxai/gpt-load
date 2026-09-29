@@ -28,8 +28,12 @@ func TestInferenceRateLimitsCooldownOnlyTheirModel(t *testing.T) {
 			if result.Effect != want {
 				t.Fatalf("scope=%s committed=%t decision=%#v", scope, committed, result)
 			}
-			if want != EffectNone && !result.CooldownUntil.Equal(now.Add(7*time.Hour)) {
-				t.Fatalf("deadline = %v", result.CooldownUntil)
+			wantDeadline := now.Add(7 * time.Hour)
+			if want == EffectCooldownModel {
+				wantDeadline = now.Add(MaxModelRateLimitCooldown)
+			}
+			if want != EffectNone && !result.CooldownUntil.Equal(wantDeadline) {
+				t.Fatalf("deadline = %v, want %v", result.CooldownUntil, wantDeadline)
 			}
 			if committed && result.Retry != RetryNone {
 				t.Fatal("committed response retried")
@@ -41,14 +45,19 @@ func TestInferenceRateLimitsCooldownOnlyTheirModel(t *testing.T) {
 	}
 }
 
-func TestModelCooldownHonorsLongExplicitRetryAfter(t *testing.T) {
+// A model-scoped 429 may not hold the model out of rotation for the whole reset
+// window the upstream names, because nothing re-probes before the deadline.
+func TestModelCooldownCapsLongExplicitRetryAfter(t *testing.T) {
 	now := time.Now()
 	result := JudgeExecution(ExecutionAttempt{DispatchState: execution.DispatchMaybeSent, StatusCode: 429, Now: now,
 		Header: http.Header{"Retry-After": {"172800"}}, Evidence: &execution.ErrorEvidence{
 			Kind: execution.ErrorKindHTTP, Hint: execution.FailureHintRateLimited, StatusCode: 429,
 		}}, DecisionContext{Operation: execution.OperationChatCompletion})
-	if !result.CooldownUntil.Equal(now.Add(48 * time.Hour)) {
-		t.Fatalf("deadline = %v", result.CooldownUntil)
+	if result.Effect != EffectCooldownModel {
+		t.Fatalf("effect = %v", result.Effect)
+	}
+	if !result.CooldownUntil.Equal(now.Add(MaxModelRateLimitCooldown)) {
+		t.Fatalf("deadline = %v, want the %v cap", result.CooldownUntil, MaxModelRateLimitCooldown)
 	}
 }
 

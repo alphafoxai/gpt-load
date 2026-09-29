@@ -10,6 +10,19 @@ import (
 
 const maxRateLimitResetDelay = time.Hour
 
+// MaxModelRateLimitCooldown bounds how long one upstream 429 may keep a model
+// out of rotation. An exhausted plan often answers with a reset hours away, and
+// nothing re-probes the model before the deadline, so an uncapped value turns a
+// transient rejection into an outage of the same length.
+const MaxModelRateLimitCooldown = 5 * time.Minute
+
+func boundModelRateLimitCooldown(now, until time.Time) time.Time {
+	if limit := now.Add(MaxModelRateLimitCooldown); until.After(limit) {
+		return limit
+	}
+	return until
+}
+
 // ParseExplicitRetryAfter 支持本次拒绝明确返回的长恢复时间，不扩大其他 reset 头的语义。
 func ParseExplicitRetryAfter(header http.Header, now time.Time) (time.Time, bool) {
 	var latest time.Time
