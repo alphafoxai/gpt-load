@@ -1,7 +1,6 @@
 package mirasim
 
 import (
-	"context"
 	"crypto/ed25519"
 	"crypto/hkdf"
 	"crypto/rand"
@@ -170,13 +169,21 @@ func (c *Client) signatureHeadersLocked(method, requestPath, credential string, 
 	return headers, nil
 }
 
-func (c *Client) relayMetadataLocked(ctx context.Context, requestPath string) (map[string]string, error) {
-	if c.sessionID == "" {
-		sessionID, errSession := randomUUID(rand.Reader)
+func (c *Client) relayMetadataLocked(requestPath string) (map[string]string, error) {
+	session := c.sessionID
+	if c.continuityKey != "" {
+		// One conversation keeps one relay session, so the relay can pin the
+		// upstream account that already holds that conversation's prompt
+		// cache. The account is part of the material so two credits on one
+		// relay never share a session.
+		session = "mirasim_" + sha256Hex([]byte(c.storage.AccountID + "\x00" + c.continuityKey))[:32]
+	} else if session == "" {
+		generated, errSession := randomUUID(rand.Reader)
 		if errSession != nil {
 			return nil, fmt.Errorf("generate Mirasim session ID: %w", errSession)
 		}
-		c.sessionID = "mirasim_" + sessionID
+		c.sessionID = "mirasim_" + generated
+		session = c.sessionID
 	}
 	// Every relay call the official client makes carries its own identifier, so
 	// the service can correlate one attempt rather than a whole session. A
@@ -186,17 +193,9 @@ func (c *Client) relayMetadataLocked(ctx context.Context, requestPath string) (m
 		return nil, fmt.Errorf("generate Mirasim call ID: %w", errCall)
 	}
 	metadata := map[string]string{
-		headerMirasimSession: c.sessionID,
+		headerMirasimSession: session,
 		headerMirasimAgent:   relayAgent(requestPath),
 		headerMirasimCall:    callID,
-	}
-	if identity, ok := ctx.Value(requestIdentityKey{}).(requestIdentity); ok {
-		if identity.session != "" {
-			metadata[headerMirasimSession] = "mirasim_" + sha256Hex([]byte(c.storage.AccountID + "\x00" + identity.session))[:32]
-		}
-		if identity.turn != "" {
-			metadata["x-mirasim-turn"] = identity.turn
-		}
 	}
 	// Only a sub-account the token itself names belongs in this header. The
 	// official client leaves it out when the signed-in identity has none, and

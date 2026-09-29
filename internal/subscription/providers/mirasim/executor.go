@@ -21,6 +21,10 @@ type ExecuteRequest struct {
 	Headers         http.Header
 	OriginalRequest []byte
 	BaseURL         string
+	// ContinuityKey is the tenant-scoped conversation identity derived from
+	// the prompt prefix. It keeps the relay session stable across the turns
+	// of one conversation.
+	ContinuityKey string
 }
 
 type ExecuteResponse struct {
@@ -34,6 +38,14 @@ type Executor struct{}
 
 func NewExecutor() *Executor { return &Executor{} }
 
+// clientFor binds one call to its conversation identity before the relay
+// session is minted.
+func clientFor(credential Storage, request ExecuteRequest) *Client {
+	client := NewClient(credential)
+	client.BindContinuity(request.ContinuityKey)
+	return client
+}
+
 func (e *Executor) Execute(ctx context.Context, credential Storage, request ExecuteRequest) (ExecuteResponse, error) {
 	if e == nil {
 		return ExecuteResponse{}, fmt.Errorf("Mirasim executor is unavailable")
@@ -43,7 +55,7 @@ func (e *Executor) Execute(ctx context.Context, credential Storage, request Exec
 		return ExecuteResponse{}, err
 	}
 	credential = applyRelayOverride(credential, request.BaseURL)
-	response, err := NewClient(credential).Do(ctx, http.MethodPost, route.Path, nil, requestHeaders(request.Headers, route.Format), body)
+	response, err := clientFor(credential, request).Do(ctx, http.MethodPost, route.Path, nil, requestHeaders(request.Headers, route.Format), body)
 	if err != nil {
 		return ExecuteResponse{}, err
 	}
@@ -75,7 +87,7 @@ func (e *Executor) ExecuteStream(ctx context.Context, credential Storage, reques
 		return ExecuteResponse{}, nil, err
 	}
 	credential = applyRelayOverride(credential, request.BaseURL)
-	response, stream, err := NewClient(credential).DoStream(ctx, http.MethodPost, route.Path, nil, requestHeaders(request.Headers, route.Format), body)
+	response, stream, err := clientFor(credential, request).DoStream(ctx, http.MethodPost, route.Path, nil, requestHeaders(request.Headers, route.Format), body)
 	if err != nil {
 		return ExecuteResponse{}, nil, err
 	}
@@ -104,7 +116,7 @@ func (e *Executor) CountTokens(ctx context.Context, credential Storage, request 
 		return ExecuteResponse{}, err
 	}
 	credential = applyRelayOverride(credential, request.BaseURL)
-	response, err := NewClient(credential).Do(ctx, http.MethodPost, "/v1/messages/count_tokens", nil, requestHeaders(request.Headers, sdktranslator.FormatClaude), body)
+	response, err := clientFor(credential, request).Do(ctx, http.MethodPost, "/v1/messages/count_tokens", nil, requestHeaders(request.Headers, sdktranslator.FormatClaude), body)
 	if err != nil {
 		return ExecuteResponse{}, err
 	}

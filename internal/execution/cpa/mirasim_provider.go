@@ -240,7 +240,7 @@ func mirasimRequest(request providerRequest) mirasim.ExecuteRequest {
 	return mirasim.ExecuteRequest{
 		Model: request.Model, Payload: append([]byte(nil), request.Payload...), Format: request.Format,
 		Headers: request.Headers.Clone(), OriginalRequest: append([]byte(nil), request.OriginalRequest...),
-		BaseURL: request.BaseURL,
+		BaseURL: request.BaseURL, ContinuityKey: request.ContinuityKey,
 	}
 }
 

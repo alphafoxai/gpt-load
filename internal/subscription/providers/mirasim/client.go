@@ -52,10 +52,6 @@ type RelayOptions struct {
 	Locale  string
 }
 
-type requestIdentityKey struct{}
-
-type requestIdentity struct{ session, turn string }
-
 func safeMetadata(value string) string {
 	value = strings.TrimSpace(value)
 	if len(value) > 512 || strings.ContainsAny(value, "\x00\r\n") {
@@ -77,6 +73,7 @@ type Client struct {
 	publicKeyBase64       string
 	deviceID              string
 	sessionID             string
+	continuityKey         string
 	ticket                string
 	ticketExpiresAt       time.Time
 	ticketRetryAt         time.Time
@@ -91,6 +88,19 @@ type Client struct {
 func NewClient(storage Storage) *Client {
 	storage.applyDefaults()
 	return &Client{storage: storage, now: time.Now}
+}
+
+// BindContinuity ties the client to a caller-scoped conversation identity, so
+// every turn of that conversation presents the same relay session and the
+// relay can keep routing it to the upstream account holding its prompt cache.
+// Without it each call mints a fresh session.
+func (c *Client) BindContinuity(key string) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.continuityKey = safeMetadata(key)
 }
 
 func (c *Client) Storage() Storage {
@@ -274,7 +284,7 @@ func (c *Client) authHeaders(ctx context.Context, httpClient *http.Client, metho
 	}
 	var metadata map[string]string
 	if !controlPlane {
-		relayMetadata, errMetadata := c.relayMetadataLocked(ctx, requestPath)
+		relayMetadata, errMetadata := c.relayMetadataLocked(requestPath)
 		if errMetadata != nil {
 			return nil, errMetadata
 		}
