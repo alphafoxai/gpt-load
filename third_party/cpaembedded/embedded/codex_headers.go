@@ -5,8 +5,10 @@ import (
 	"strings"
 )
 
-// CodexClientVersion 与固定 CPA 的模型发现版本及 GPT-Load 的 Codex 模型目录版本一致，由测试校验。
-const CodexClientVersion = "0.155.0"
+// CodexClientVersion 是推理、模型发现和账号观测共用的 Codex 版本身份。
+// 0.160.0 是模型列表首次包含 gpt-6.1-sol 的 client_version；0.155.0 会被上游拒绝该模型。
+// 该值必须与 catalog.CodexModelCatalogVersion 一致，并由测试锁定出站值。
+const CodexClientVersion = "0.160.0"
 
 // codexHeadersRoundTripper 保留 CPA 的 UA，并固定版本及 HTTP 会话头。
 type codexHeadersRoundTripper struct {

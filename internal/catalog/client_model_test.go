@@ -16,12 +16,12 @@ func TestCodexModelCatalogSnapshotDigest(t *testing.T) {
 
 func TestCodexClientModelUsesGPT6Templates(t *testing.T) {
 	for _, test := range []struct {
-		id     string
-		name   string
-		levels []string
+		id, name, minimum, reasoning string
+		levels                       []string
 	}{
-		{"gpt-6-sol", "GPT-6-Sol", []string{"low", "medium", "high", "xhigh", "max", "ultra"}},
-		{"gpt-6-luna", "GPT-6-Luna", []string{"low", "medium", "high", "xhigh", "max"}},
+		{"gpt-6.1-sol", "GPT-6.1-Sol", "0.153.0", "low", []string{"low", "medium", "high", "xhigh", "max", "ultra"}},
+		{"gpt-6-sol", "GPT-6-Sol", "0.155.0", "medium", []string{"low", "medium", "high", "xhigh", "max", "ultra"}},
+		{"gpt-6-luna", "GPT-6-Luna", "0.155.0", "medium", []string{"low", "medium", "high", "xhigh", "max"}},
 	} {
 		t.Run(test.id, func(t *testing.T) {
 			model, automatic, _, err := BuildCodexClientModel(test.id, 0, ClientModelOverrides{})
@@ -30,10 +30,11 @@ func TestCodexClientModelUsesGPT6Templates(t *testing.T) {
 			}
 			if automatic.DisplayName != test.name ||
 				!reflect.DeepEqual(automatic.SupportedReasoningLevels, test.levels) ||
-				model["minimal_client_version"] != "0.155.0" ||
+				model["minimal_client_version"] != test.minimum ||
+				model["default_reasoning_level"] != test.reasoning ||
 				model["tool_mode"] != "code_mode_only" || model["use_responses_lite"] != true {
-				t.Fatalf("model %q did not use its native template: profile=%#v, minimum=%v, tool_mode=%v, responses_lite=%v",
-					test.id, automatic, model["minimal_client_version"], model["tool_mode"], model["use_responses_lite"])
+				t.Fatalf("model %q did not use its native template: profile=%#v, minimum=%v, reasoning=%v, tool_mode=%v, responses_lite=%v",
+					test.id, automatic, model["minimal_client_version"], model["default_reasoning_level"], model["tool_mode"], model["use_responses_lite"])
 			}
 		})
 	}

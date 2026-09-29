@@ -42,8 +42,9 @@ the existing HTTP executor remains separate.
 
 Codex HTTP inference (including streaming and images) and WebSocket handshakes
 use the pinned CPA default User-Agent (still `codex-tui/0.154.0` in CPA v7.3.17).
-`Version` is fixed to `CodexClientVersion`, currently `0.155.0`, matching CPA's
-model discovery client version. Downstream and GPT-Load group
+`Version` is fixed to `CodexClientVersion`, currently `0.160.0`.
+CPA v7.3.17 still discovers models as 0.155.0, but that identity rejects
+`gpt-6.1-sol`, so GPT-Load stays one catalog revision ahead. Downstream and GPT-Load group
 header rules cannot override, clear, or remove these two identity headers.
 This restriction applies only to Codex; other providers retain their header rules.
 HTTP continues to honor explicit `Originator` rules, including empty values and
@@ -51,8 +52,7 @@ removal. WebSocket retains the SDK's existing originator handling.
 
 Model and account observation requests use the same version for their User-Agent,
 Version header, and models `client_version` query parameter. The embedded model
-JSON is copied from the pinned CPA release's
-`internal/registry/models/codex_client_models.json`, with its SHA-256 checked by
+JSON is the Codex `/models` response for client_version `0.160.0`, with its SHA-256 checked by
 tests. CPA's execution UA constant is private and currently differs from its
 model discovery version; retain the SDK's UA rather than rewriting it locally.
 HTTP, image, WebSocket, and observation tests check these outgoing values.
