@@ -12,20 +12,18 @@ import (
 
 const (
 	// CodexModelCatalogVersion identifies the Codex client contract represented by the embedded snapshot.
-	CodexModelCatalogVersion = "0.160.0"
+	CodexModelCatalogVersion = "0.159.2"
 	// CodexModelCatalogCPASDKVersion identifies the CPA SDK release tested with this snapshot.
-	CodexModelCatalogCPASDKVersion = "v7.3.17"
-	codexModelCatalogSHA256        = "0a2770325ea501c69406e4c2c19108e79d75f3c172985dbd3873a60e84337bff"
+	CodexModelCatalogCPASDKVersion = "v8.0.4"
+	codexModelCatalogSHA256        = "fd219bd9f061278275f528939f82f54d2eb97df4b25c23b022adbe48813d920b"
 	codexFallbackModel             = "gpt-5.5"
 )
 
 const personalityPlaceholder = "{{ personality }}"
 
-// Snapshot source: Codex /models?client_version=0.160.0.
-// CPA v7.3.17 still ships the 0.155.0 catalog, which omits gpt-6.1-sol.
-// Upstream rejects that model when Version is 0.155.0, so this snapshot matches 0.160.0.
+// Snapshot source: openai/codex rust-v0.159.2, codex-rs/models-manager/models.json.
 //
-//go:embed codex_client_models_0.160.0.json
+//go:embed codex_client_models_0.159.2.json
 var codexClientModelsJSON []byte
 
 type codexModelCatalog struct {
