@@ -273,6 +273,24 @@ func liveRequest(t *testing.T, client *http.Client, method, endpoint, key, conte
 	return response
 }
 
+func waitLiveSidebandDetached(t *testing.T, handler *Handler, id string) bool {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		handler.liveSessions.mu.Lock()
+		call := handler.liveSessions.calls[id]
+		detached := call != nil && !call.attached && !call.terminating
+		handler.liveSessions.mu.Unlock()
+		if detached {
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
 func TestCodexLiveCreatesAcrossGroupsPinsOwnerAndLogsOnce(t *testing.T) {
 	echo := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		connection, err := (&websocket.Upgrader{}).Upgrade(w, r, nil)
@@ -289,7 +307,7 @@ func TestCodexLiveCreatesAcrossGroupsPinsOwnerAndLogsOnce(t *testing.T) {
 	}))
 	defer echo.Close()
 	fake := &liveFakeOpener{wsURL: "ws" + strings.TrimPrefix(echo.URL, "http")}
-	_, engine, sink, _, _ := liveGatewayFixture(t, fake)
+	handler, engine, sink, _, _ := liveGatewayFixture(t, fake)
 	server := httptest.NewServer(engine)
 	defer server.Close()
 	models := []string{"client-live-model", channel.CodexLiveModelID, channel.CodexLiveModelID, channel.CodexLiveModelID}
@@ -352,6 +370,10 @@ func TestCodexLiveCreatesAcrossGroupsPinsOwnerAndLogsOnce(t *testing.T) {
 					}
 				}
 				_ = connection.Close()
+				// 服务端要先看到关闭才会放开 sideband。立刻重连会在 Linux 上撞上仍 attached 的旧连接。
+				if repeat == 0 && !waitLiveSidebandDetached(t, handler, "rtc_1") {
+					t.Fatal("sideband was not released before reconnect")
+				}
 			}
 		}
 		hungup := liveRequest(t, server.Client(), http.MethodPost, server.URL+location+"/hangup", "gl-client", "", nil)
