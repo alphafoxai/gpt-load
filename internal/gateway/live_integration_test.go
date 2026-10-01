@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -122,7 +123,8 @@ func (session *liveFakeUpstream) DialSideband(ctx context.Context, _ string, pro
 		return nil, 0, errors.New("live sideband is already attached")
 	}
 	session.mu.Unlock()
-	dialer := websocket.Dialer{Subprotocols: protocols}
+	// 测试只连接本进程里的 echo server，不能沿用环境里的 HTTP 代理。
+	dialer := websocket.Dialer{Subprotocols: protocols, Proxy: func(*http.Request) (*url.URL, error) { return nil, nil }}
 	connection, response, err := dialer.DialContext(ctx, session.wsURL, nil)
 	status := 0
 	if response != nil {
@@ -319,7 +321,8 @@ func TestCodexLiveCreatesAcrossGroupsPinsOwnerAndLogsOnce(t *testing.T) {
 		if index == 1 {
 			wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + location
 			otherHeaders := http.Header{"Authorization": {"Bearer gl-other"}}
-			if connection, response, err := websocket.DefaultDialer.Dial(wsURL, otherHeaders); err == nil || response == nil || response.StatusCode != http.StatusNotFound {
+			dialer := websocket.Dialer{Proxy: func(*http.Request) (*url.URL, error) { return nil, nil }}
+			if connection, response, err := dialer.Dial(wsURL, otherHeaders); err == nil || response == nil || response.StatusCode != http.StatusNotFound {
 				if connection != nil {
 					_ = connection.Close()
 				}
@@ -327,7 +330,7 @@ func TestCodexLiveCreatesAcrossGroupsPinsOwnerAndLogsOnce(t *testing.T) {
 			}
 			ownerHeaders := http.Header{"Authorization": {"Bearer gl-client"}}
 			for repeat := 0; repeat < 2; repeat++ {
-				connection, _, err := websocket.DefaultDialer.Dial(wsURL, ownerHeaders)
+				connection, _, err := dialer.Dial(wsURL, ownerHeaders)
 				if err != nil {
 					t.Fatal(err)
 				}
