@@ -1,0 +1,61 @@
+name: Upstream sync
+
+# 每天把 tbphp/gpt-load 的 main 合并到一条 sync/upstream-* 分支并开 PR。
+# 不直接推 main，也不打 tag：镜像仍由 v2.0.0-rc.*-af.* tag 触发 alphafox-image.yml。
+# 有冲突就失败并留下日志，不提交半成品。
+
+on:
+  schedule:
+    - cron: "0 21 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Merge upstream and open a PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -eu
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/tbphp/gpt-load.git
+          git fetch upstream --tags
+          branch="sync/upstream-$(date -u +%Y%m%d)"
+          git checkout -B "$branch" main
+          if ! git merge --no-ff --no-edit upstream/main; then
+            printf 'merge conflict against %s\n' "$(git rev-parse --short upstream/main)" >&2
+            git diff --name-only --diff-filter=U >&2 || true
+            exit 1
+          fi
+          if git diff --quiet main; then
+            printf 'main already contains upstream/main\n'
+            exit 0
+          fi
+          git push --force-with-lease origin "$branch"
+          existing="$(gh pr list --head "$branch" --base main --json number --jq '.[0].number')"
+          if [ -n "$existing" ]; then
+            printf 'PR #%s already open\n' "$existing"
+            exit 0
+          fi
+          gh pr create --base main --head "$branch" \
+            --title "Sync upstream $(git rev-parse --short upstream/main)" \
+            --body "Automated merge of tbphp/gpt-load main. Review, then tag \`v2.0.0-rc.*-af.*\` to publish \`ghcr.io/alphafoxai/gpt-load:2\`."
