@@ -1,0 +1,137 @@
+name: AlphaFox CI
+
+# 本 fork 没有上游那套 self-hosted Runner。PR 检查走 GitHub 托管的
+# ubuntu-24.04。上游 ci.yml 依赖 self-hosted，已在本仓库停用。
+# Windows ACL 检查不在这条路径里：生产主机是 linux/amd64。
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: alphafox-ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  GOPROXY: https://proxy.golang.org|direct
+  GOTOOLCHAIN: auto
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Validate and build web UI
+        uses: ./.github/actions/web-ci
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Check Go formatting
+        run: |
+          formatted_files="$(gofmt -l .)"
+          test -z "${formatted_files}"
+
+      - name: Check module graph
+        run: go mod tidy -diff
+
+      - name: Check embedded CPA bridge module
+        working-directory: third_party/cpaembedded
+        run: |
+          go mod tidy -diff
+          go vet ./...
+
+      - name: Run Go vet
+        run: go vet ./...
+
+      - name: Build backend
+        run: go build -o gpt-load .
+
+      - name: Check repository invariants
+        run: git diff --check
+
+      - name: Run tests
+        run: go test -count=1 -timeout=20m ./...
+
+      - name: Run embedded CPA bridge tests
+        working-directory: third_party/cpaembedded
+        run: go test -count=1 -timeout=15m ./...
+
+  database-contract:
+    name: Database contract (${{ matrix.driver }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - driver: mysql
+            image: mysql:8.4
+            data-dir: /var/lib/mysql
+            port: "3306"
+            health: mysqladmin ping -h 127.0.0.1 -proot
+            dsn: mysql://root:root@127.0.0.1:{0}/gpt_load?charset=utf8mb4&transaction_isolation=%27READ-COMMITTED%27
+          - driver: postgres
+            image: postgres:18
+            data-dir: /var/lib/postgresql
+            port: "5432"
+            health: pg_isready -U postgres -d gpt_load
+            dsn: postgres://postgres:postgres@127.0.0.1:{0}/gpt_load?sslmode=disable
+    services:
+      database:
+        image: ${{ matrix.image }}
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: gpt_load
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: gpt_load
+        ports:
+          - ${{ matrix.port }}
+        options: >-
+          --tmpfs ${{ matrix.data-dir }}:rw,nosuid,nodev,size=2g
+          --health-cmd="${{ matrix.health }}"
+          --health-interval=5s
+          --health-timeout=10s
+          --health-retries=20
+      secondary-mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: gpt_load
+        ports:
+          - 3306
+        options: >-
+          --tmpfs /var/lib/mysql:rw,nosuid,nodev,size=2g
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval=5s
+          --health-timeout=10s
+          --health-retries=20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Run external database contract
+        env:
+          GPT_LOAD_DATABASE_TEST_DSN: ${{ format(matrix.dsn, job.services.database.ports[format('{0}', matrix.port)]) }}
+          GPT_LOAD_DATABASE_SECONDARY_DSN: ${{ matrix.driver == 'mysql' && format(matrix.dsn, job.services.secondary-mysql.ports['3306']) || '' }}
+        run: .github/scripts/ci-database-contract.sh "${{ matrix.driver }}"
