@@ -991,7 +991,11 @@ onBeforeUnmount(() => {
           </div>
 
           <div
-            v-if="stage.authorization_method === 'device_oauth' && stage.user_code"
+            v-if="
+              stage.authorization_method === 'device_oauth' &&
+              stage.user_code &&
+              (stage.login_providers?.length ?? 0) <= 1
+            "
             class="subscription-stager__link-field"
           >
             <span class="subscription-stager__field-label">

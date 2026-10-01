@@ -29,6 +29,7 @@ const (
 	Antigravity      = spec.Antigravity
 	Grok             = spec.Grok
 	Mirasim          = spec.Mirasim
+	ZCode            = spec.ZCode
 	Anthropic        = spec.Anthropic
 	Gemini           = spec.Gemini
 	AzureOpenAI      = spec.AzureOpenAI
@@ -219,6 +220,7 @@ const (
 	ProviderAntigravity          = spec.ProviderAntigravity
 	ProviderGrok                 = spec.ProviderGrok
 	ProviderMirasim              = spec.ProviderMirasim
+	ProviderZCode                = spec.ProviderZCode
 	ProviderAnthropic            = spec.ProviderAnthropic
 	ProviderGemini               = spec.ProviderGemini
 	ProviderMultiProtocolGateway = spec.ProviderMultiProtocolGateway

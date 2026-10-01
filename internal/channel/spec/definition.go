@@ -19,6 +19,7 @@ const (
 	Antigravity      ID = "antigravity"
 	Grok             ID = "grok"
 	Mirasim          ID = "mirasim"
+	ZCode            ID = "zcode"
 	Anthropic        ID = "anthropic"
 	Gemini           ID = "gemini"
 	AzureOpenAI      ID = "azure_openai"
@@ -61,6 +62,7 @@ const (
 	ProviderAntigravity          ProviderKind = "antigravity"
 	ProviderGrok                 ProviderKind = "grok"
 	ProviderMirasim              ProviderKind = "mirasim"
+	ProviderZCode                ProviderKind = "zcode"
 	ProviderAnthropic            ProviderKind = "anthropic"
 	ProviderGemini               ProviderKind = "gemini"
 	ProviderMultiProtocolGateway ProviderKind = "multi_protocol_gateway"
@@ -114,6 +116,7 @@ func (kind ProviderKind) Valid() bool {
 		ProviderAntigravity,
 		ProviderGrok,
 		ProviderMirasim,
+		ProviderZCode,
 		ProviderAnthropic,
 		ProviderGemini,
 		ProviderMultiProtocolGateway,

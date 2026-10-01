@@ -257,7 +257,7 @@ async function submitPastedCallback(): Promise<void> {
         >{{ t(device ? 'subscriptions.deviceStep' : 'subscriptions.callbackStep') }}
       </h4>
       <template v-if="device">
-        <div v-if="stage.userCode" class="modern-subscription-device-code">
+        <div v-if="stage.userCode && providers.length <= 1" class="modern-subscription-device-code">
           <AppCopyValue :value="stage.userCode" :label="t('subscriptions.copyDeviceCode')" wrap />
         </div>
         <p class="modern-subscription-auth-help">{{ t('subscriptions.deviceHelp') }}</p>

@@ -82,6 +82,7 @@ func NewAdapter(credentials *subscription.CredentialManager, channels *channel.R
 			newAntigravityProviderBridge(),
 			newGrokProviderBridge(),
 			newMirasimProviderBridge(),
+			newZCodeProviderBridge(),
 		),
 	}
 }
