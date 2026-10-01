@@ -31,7 +31,8 @@ jobs:
 
       - name: Merge upstream and open a PR
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # 组织策略禁止 GITHUB_TOKEN 创建 PR。配了 UPSTREAM_SYNC_TOKEN 时用它开 PR。
+          GH_TOKEN: ${{ secrets.UPSTREAM_SYNC_TOKEN || github.token }}
         shell: bash
         run: |
           set -eu
@@ -56,6 +57,10 @@ jobs:
             printf 'PR #%s already open\n' "$existing"
             exit 0
           fi
-          gh pr create --base main --head "$branch" \
+          if ! gh pr create --base main --head "$branch" \
             --title "Sync upstream $(git rev-parse --short upstream/main)" \
-            --body "Automated merge of tbphp/gpt-load main. Review, then tag \`v2.0.0-rc.*-af.*\` to publish \`ghcr.io/alphafoxai/gpt-load:2\`."
+            --body "Automated merge of tbphp/gpt-load main. Review, then tag \`v2.0.0-rc.*-af.*\` to publish \`ghcr.io/alphafoxai/gpt-load:2\`."; then
+            printf 'branch pushed: https://github.com/alphafoxai/gpt-load/compare/main...%s\n' "$branch" >&2
+            printf 'PR creation failed. The org blocks GITHUB_TOKEN from creating pull requests; set Actions secret UPSTREAM_SYNC_TOKEN to a PAT that can open PRs.\n' >&2
+            exit 1
+          fi
