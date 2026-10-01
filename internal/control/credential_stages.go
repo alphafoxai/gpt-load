@@ -742,8 +742,10 @@ func (s *Service) beginDeviceCredentialAuthorization(
 		return CredentialStageResult{}, app_errors.ErrAuthorizationUnavailable
 	}
 	nextPollAtMS := now.Add(pollInterval).UnixMilli()
+	loginProviders := credentialStageLoginProviders(authorization.Providers)
 	summaryJSON, err := json.Marshal(credentialStageSafeSummary{Authorization: &credentialStageAuthorizationSummary{
 		AuthorizationURL: verificationURL,
+		LoginProviders:   loginProviders,
 		UserCode:         userCode,
 		NextPollAtMS:     nextPollAtMS,
 		PollIntervalMS:   pollInterval.Milliseconds(),
@@ -776,7 +778,7 @@ func (s *Service) beginDeviceCredentialAuthorization(
 	}
 	return CredentialStageResult{
 		StageID: row.ID, Status: string(row.Status), AuthorizationMethod: row.AuthorizationMethod,
-		AuthorizationURL: verificationURL, UserCode: userCode, NextPollAtMS: nextPollAtMS,
+		AuthorizationURL: verificationURL, LoginProviders: loginProviders, UserCode: userCode, NextPollAtMS: nextPollAtMS,
 		Account: CredentialStageAccount{}, ExpiresAtMS: row.ExpiresAtMS,
 	}, nil
 }

@@ -17,6 +17,7 @@ func TestSubscriptionTargetsKeepOfficialDefaultsOutOfConfiguration(t *testing.T)
 		{Antigravity, []string{"https://daily-cloudcode-pa.googleapis.com", "https://cloudcode-pa.googleapis.com"}},
 		{Grok, []string{"https://cli-chat-proxy.grok.com"}},
 		{Mirasim, []string{"https://relay.mirasim.ai"}},
+		{ZCode, []string{"https://open.bigmodel.cn/api/anthropic"}},
 	} {
 		t.Run(string(test.id), func(t *testing.T) {
 			for _, raw := range []json.RawMessage{nil, json.RawMessage(`{}`), json.RawMessage(`{"base_url":"  "}`)} {

@@ -21,6 +21,7 @@ func TestRegistryHasStableBuiltInOrderAndSearch(t *testing.T) {
 		Antigravity,
 		Grok,
 		Mirasim,
+		ZCode,
 		Anthropic,
 		Gemini,
 		ID("azure_openai"),
@@ -58,7 +59,7 @@ func TestRegistryHasStableBuiltInOrderAndSearch(t *testing.T) {
 	if got := descriptorIDs(registry.Search("GeMiNi")); !reflect.DeepEqual(got, []ID{Gemini}) {
 		t.Fatalf("Search(gemini) IDs = %v", got)
 	}
-	if got := descriptorIDs(registry.Search("subscription")); !reflect.DeepEqual(got, []ID{Codex, Claude, Antigravity, Grok, Mirasim}) {
+	if got := descriptorIDs(registry.Search("subscription")); !reflect.DeepEqual(got, []ID{Codex, Claude, Antigravity, Grok, Mirasim, ZCode}) {
 		t.Fatalf("Search(subscription) IDs = %v, want [codex claude antigravity grok mirasim]", got)
 	}
 	if got := descriptorIDs(registry.Search("compatible")); !reflect.DeepEqual(got, []ID{OpenAICompatible}) {
@@ -95,7 +96,7 @@ func TestRegistryHasStableBuiltInOrderAndSearch(t *testing.T) {
 	first := registry.List()
 	first[0].ClientProtocols[0] = protocol.Protocol("mutated")
 	first[0].ParamFields = append(first[0].ParamFields, FieldDescriptor{Key: "mutated"})
-	vertexIndex := 10
+	vertexIndex := 11
 	if first[vertexIndex].ID != GoogleVertex || first[vertexIndex].ParamFields[0].DefaultValue == nil {
 		t.Fatalf("unexpected Vertex descriptor = %#v", first[vertexIndex])
 	}
@@ -850,6 +851,7 @@ func TestEveryResponsesCreateChannelDeclaresStoreHandling(t *testing.T) {
 		Antigravity:      ResponsesStoreHandlingStateless,
 		Grok:             ResponsesStoreHandlingStateless,
 		Mirasim:          ResponsesStoreHandlingStateless,
+		ZCode:            ResponsesStoreHandlingStateless,
 		Anthropic:        ResponsesStoreHandlingStateless,
 		Gemini:           ResponsesStoreHandlingStateless,
 		AzureOpenAI:      ResponsesStoreHandlingStateless,

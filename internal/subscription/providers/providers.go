@@ -9,6 +9,7 @@ import (
 	"gpt-load/internal/subscription/providers/codex"
 	"gpt-load/internal/subscription/providers/grok"
 	"gpt-load/internal/subscription/providers/mirasim"
+	"gpt-load/internal/subscription/providers/zcode"
 	subscriptionruntime "gpt-load/internal/subscription/runtime"
 )
 
@@ -19,5 +20,6 @@ func Implementations() []subscriptionruntime.Implementations {
 		antigravity.Implementations(),
 		grok.Implementations(),
 		mirasim.Implementations(),
+		zcode.Implementations(),
 	}
 }

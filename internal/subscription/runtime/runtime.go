@@ -233,6 +233,9 @@ type DeviceAuthorization struct {
 	DriverState     []byte
 	ExpiresAt       time.Time
 	PollInterval    time.Duration
+	// Providers lists extra browser links for the same polled sign-in.
+	// VerificationURL stays the default so a client that opens one link still works.
+	Providers []AuthorizationProvider
 }
 
 // DeviceAuthorizationStatus is the bounded result of one token-endpoint poll.
