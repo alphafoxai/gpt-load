@@ -158,7 +158,9 @@ async function submitPastedCallback(): Promise<void> {
             as-child
           >
             <AppExternalLink :href="provider.url">
-              <AppIcon :icon="ExternalLink" size="sm" />{{ t('subscriptions.providerLogin', { provider: provider.label }) }}
+              <AppIcon :icon="ExternalLink" size="sm" />{{
+                t('subscriptions.providerLogin', { provider: provider.label })
+              }}
             </AppExternalLink>
           </AppButton>
         </div>
@@ -200,7 +202,10 @@ async function submitPastedCallback(): Promise<void> {
         readonly
         spellcheck="false"
       />
-      <div v-if="providers.length <= 1 && stage.authorizationURL" class="modern-subscription-auth-url">
+      <div
+        v-if="providers.length <= 1 && stage.authorizationURL"
+        class="modern-subscription-auth-url"
+      >
         <AppCopyValue
           :value="stage.authorizationURL"
           :label="t('subscriptions.copyAuthorization')"

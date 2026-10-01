@@ -518,7 +518,10 @@ async function sendEmailCode(stage: CredentialStage): Promise<void> {
   emailFeedback.value = { ...emailFeedback.value, [stage.stage_id]: '' }
   try {
     await sendCredentialEmailCode(client, stage.stage_id, email)
-    emailFeedback.value = { ...emailFeedback.value, [stage.stage_id]: 'import.subscription.emailSent' }
+    emailFeedback.value = {
+      ...emailFeedback.value,
+      [stage.stage_id]: 'import.subscription.emailSent',
+    }
   } catch (cause) {
     emailFeedback.value = { ...emailFeedback.value, [stage.stage_id]: emailFeedbackKey(cause) }
   } finally {
@@ -881,7 +884,9 @@ onBeforeUnmount(() => {
             v-if="(stage.login_providers?.length ?? 0) > 1"
             class="subscription-stager__link-field"
           >
-            <span class="subscription-stager__field-label">{{ t('import.subscription.providerLogin') }}</span>
+            <span class="subscription-stager__field-label">{{
+              t('import.subscription.providerLogin')
+            }}</span>
             <div class="subscription-stager__authorization-link">
               <a
                 v-for="provider in stage.login_providers"
@@ -928,8 +933,17 @@ onBeforeUnmount(() => {
             <FormField
               :id="`mirasim-code-${stage.stage_id}`"
               :label="t('import.subscription.emailCode')"
-              :error="emailFeedback[stage.stage_id] && emailFeedback[stage.stage_id] !== 'import.subscription.emailSent' ? t(emailFeedback[stage.stage_id]) : undefined"
-              :description="emailFeedback[stage.stage_id] === 'import.subscription.emailSent' ? t(emailFeedback[stage.stage_id]) : t('import.subscription.emailStep')"
+              :error="
+                emailFeedback[stage.stage_id] &&
+                emailFeedback[stage.stage_id] !== 'import.subscription.emailSent'
+                  ? t(emailFeedback[stage.stage_id])
+                  : undefined
+              "
+              :description="
+                emailFeedback[stage.stage_id] === 'import.subscription.emailSent'
+                  ? t(emailFeedback[stage.stage_id])
+                  : t('import.subscription.emailStep')
+              "
               size="compact"
             >
               <template #default>
@@ -944,7 +958,12 @@ onBeforeUnmount(() => {
             <AppButton
               type="submit"
               size="compact"
-              :disabled="disabled || Boolean(busyAction) || !emailAddresses[stage.stage_id]?.trim() || !emailCodes[stage.stage_id]?.trim()"
+              :disabled="
+                disabled ||
+                Boolean(busyAction) ||
+                !emailAddresses[stage.stage_id]?.trim() ||
+                !emailCodes[stage.stage_id]?.trim()
+              "
               :busy="busyAction === `email:${stage.stage_id}`"
             >
               {{ t('import.subscription.emailVerify') }}
