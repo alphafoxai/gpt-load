@@ -12,6 +12,8 @@ import (
 
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
 	_ "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator/builtin"
+
+	"github.com/tidwall/gjson"
 )
 
 const anthropicVersion = "2023-06-01"
@@ -43,7 +45,8 @@ func Execute(ctx context.Context, credential Credential, format string, payload 
 	clientFormat := formatFrom(format)
 	requestBody := append([]byte(nil), payload...)
 	if clientFormat != upstreamFormat {
-		requestBody = sdktranslator.TranslateRequest(clientFormat, upstreamFormat, "", requestBody, stream)
+		// The translator takes the model from this argument and otherwise writes an empty model.
+		requestBody = sdktranslator.TranslateRequest(clientFormat, upstreamFormat, gjson.GetBytes(payload, "model").String(), requestBody, stream)
 	}
 	endpoint, err := messagesURL(credential.BaseURL)
 	if err != nil {

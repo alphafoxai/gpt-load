@@ -80,7 +80,7 @@ func TestExecuteTranslatesOpenAIResponsesToAnthropic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(gotBody, `"input"`) || !strings.Contains(gotBody, `"messages"`) {
+	if strings.Contains(gotBody, `"input"`) || !strings.Contains(gotBody, `"messages"`) || !strings.Contains(gotBody, `"model":"GLM-5.3"`) {
 		t.Fatalf("upstream body = %s", gotBody)
 	}
 	if !strings.Contains(string(body), `"output"`) && !strings.Contains(string(body), "ok") {
