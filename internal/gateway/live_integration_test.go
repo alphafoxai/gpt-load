@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -122,7 +123,8 @@ func (session *liveFakeUpstream) DialSideband(ctx context.Context, _ string, pro
 		return nil, 0, errors.New("live sideband is already attached")
 	}
 	session.mu.Unlock()
-	dialer := websocket.Dialer{Subprotocols: protocols}
+	// 测试只连接本进程里的 echo server，不能沿用环境里的 HTTP 代理。
+	dialer := websocket.Dialer{Subprotocols: protocols, Proxy: func(*http.Request) (*url.URL, error) { return nil, nil }}
 	connection, response, err := dialer.DialContext(ctx, session.wsURL, nil)
 	status := 0
 	if response != nil {
@@ -271,6 +273,24 @@ func liveRequest(t *testing.T, client *http.Client, method, endpoint, key, conte
 	return response
 }
 
+func waitLiveSidebandDetached(t *testing.T, handler *Handler, id string) bool {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		handler.liveSessions.mu.Lock()
+		call := handler.liveSessions.calls[id]
+		detached := call != nil && !call.attached && !call.terminating
+		handler.liveSessions.mu.Unlock()
+		if detached {
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
 func TestCodexLiveCreatesAcrossGroupsPinsOwnerAndLogsOnce(t *testing.T) {
 	echo := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		connection, err := (&websocket.Upgrader{}).Upgrade(w, r, nil)
@@ -287,7 +307,7 @@ func TestCodexLiveCreatesAcrossGroupsPinsOwnerAndLogsOnce(t *testing.T) {
 	}))
 	defer echo.Close()
 	fake := &liveFakeOpener{wsURL: "ws" + strings.TrimPrefix(echo.URL, "http")}
-	_, engine, sink, _, _ := liveGatewayFixture(t, fake)
+	handler, engine, sink, _, _ := liveGatewayFixture(t, fake)
 	server := httptest.NewServer(engine)
 	defer server.Close()
 	models := []string{"client-live-model", channel.CodexLiveModelID, channel.CodexLiveModelID, channel.CodexLiveModelID}
@@ -319,7 +339,8 @@ func TestCodexLiveCreatesAcrossGroupsPinsOwnerAndLogsOnce(t *testing.T) {
 		if index == 1 {
 			wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + location
 			otherHeaders := http.Header{"Authorization": {"Bearer gl-other"}}
-			if connection, response, err := websocket.DefaultDialer.Dial(wsURL, otherHeaders); err == nil || response == nil || response.StatusCode != http.StatusNotFound {
+			dialer := websocket.Dialer{Proxy: func(*http.Request) (*url.URL, error) { return nil, nil }}
+			if connection, response, err := dialer.Dial(wsURL, otherHeaders); err == nil || response == nil || response.StatusCode != http.StatusNotFound {
 				if connection != nil {
 					_ = connection.Close()
 				}
@@ -327,7 +348,7 @@ func TestCodexLiveCreatesAcrossGroupsPinsOwnerAndLogsOnce(t *testing.T) {
 			}
 			ownerHeaders := http.Header{"Authorization": {"Bearer gl-client"}}
 			for repeat := 0; repeat < 2; repeat++ {
-				connection, _, err := websocket.DefaultDialer.Dial(wsURL, ownerHeaders)
+				connection, _, err := dialer.Dial(wsURL, ownerHeaders)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -349,6 +370,10 @@ func TestCodexLiveCreatesAcrossGroupsPinsOwnerAndLogsOnce(t *testing.T) {
 					}
 				}
 				_ = connection.Close()
+				// 服务端要先看到关闭才会放开 sideband。立刻重连会在 Linux 上撞上仍 attached 的旧连接。
+				if repeat == 0 && !waitLiveSidebandDetached(t, handler, "rtc_1") {
+					t.Fatal("sideband was not released before reconnect")
+				}
 			}
 		}
 		hungup := liveRequest(t, server.Client(), http.MethodPost, server.URL+location+"/hangup", "gl-client", "", nil)

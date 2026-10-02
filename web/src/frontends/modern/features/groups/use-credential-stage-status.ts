@@ -47,6 +47,8 @@ export function useCredentialStageStatus(
           ...(update.status === 'pending_authorization'
             ? {
                 authorizationURL: update.authorizationURL ?? stage.authorizationURL,
+                loginProviders: update.loginProviders ?? stage.loginProviders,
+                emailLogin: update.emailLogin ?? stage.emailLogin,
                 redirectURI: update.redirectURI ?? stage.redirectURI,
                 userCode: update.userCode ?? stage.userCode,
                 nextPollAt: update.nextPollAt ?? stage.nextPollAt,

@@ -1,14 +1,25 @@
 export const zhCN = {
   linkStep: '复制授权链接并登录',
+  providerLogin: '使用 {provider} 登录',
+  emailStep: '或使用邮箱验证码登录',
+  emailAddress: '邮箱',
+  emailSend: '发送验证码',
+  emailCode: '验证码',
+  emailVerify: '验证并登录',
+  emailSent: '验证码已发送，请查收邮件。同一登录 60 秒内只能发送一次，最多 3 次。',
+  emailInvalid: '请输入有效的邮箱和验证码。',
+  emailLimited: '发送或验证次数已达上限，请重新登录。',
+  emailRejected: '验证码不正确或登录没有被接受。',
+  emailFailed: '邮箱登录没有完成，请重试。',
   copyAuthorization: '复制完整授权链接',
   copyLink: '复制连接',
   authenticating: '认证中',
   callbackStep: '粘贴完整回调地址',
-  callbackPlaceholder: 'http://localhost:端口/回调路径?code=…&state=…',
+  callbackPlaceholder: 'http://localhost:端口/回调路径?state=…',
   callbackHelp:
-    '登录后，复制地址栏中包含 code 和 state 的完整地址并粘贴到这里。即使 localhost 页面无法打开也可以，不要将 localhost 改成服务器地址。',
+    '登录后，复制地址栏里的完整地址粘贴到这里，保留其中的 state 和上游返回的参数：授权码渠道是 code，Mirasim 这类直接返回令牌的渠道是 access_token 与 refresh_token。即使 localhost 页面无法打开也可以，不要将 localhost 改成服务器地址。',
   callbackIncomplete:
-    '请粘贴带有 code 和 state 的完整回调地址，而不是授权链接、单独的授权码或 localhost 首页。',
+    '请粘贴带有 state 的完整回调地址：授权码渠道需要 code，直接返回令牌的渠道需要 access_token 与 refresh_token。不要粘贴授权链接、单独的授权码或 localhost 首页。',
   callbackTarget: '请使用 {address} 对应的完整回调地址，保留原始域名、端口和路径。',
   callbackSessionMismatch:
     '回调地址与当前授权会话不匹配或已使用。已完成的授权会自动同步；未完成时请使用当前链接登录。',
@@ -114,15 +125,26 @@ export const zhCN = {
 
 export const enUS: typeof zhCN = {
   linkStep: 'Copy the authorization link and sign in',
+  providerLogin: 'Sign in with {provider}',
+  emailStep: 'Or sign in with an email code',
+  emailAddress: 'Email',
+  emailSend: 'Send code',
+  emailCode: 'Code',
+  emailVerify: 'Verify and sign in',
+  emailSent: 'The code was sent. One login can request a code once a minute, up to 3 times.',
+  emailInvalid: 'Enter a valid email address and code.',
+  emailLimited: 'Too many email sign-in attempts. Start the login again.',
+  emailRejected: 'The code was rejected or the sign-in was not accepted.',
+  emailFailed: 'Email sign-in did not finish. Try again.',
   copyAuthorization: 'Copy the complete authorization link',
   copyLink: 'Copy link',
   authenticating: 'Authenticating',
   callbackStep: 'Paste the full callback URL',
-  callbackPlaceholder: 'http://localhost:port/callback-path?code=…&state=…',
+  callbackPlaceholder: 'http://localhost:port/callback-path?state=…',
   callbackHelp:
-    'After signing in, paste the complete address containing code and state from the address bar. This works even if the localhost page cannot open. Do not replace localhost with the server address.',
+    'After signing in, paste the complete address from the address bar, keeping state and whatever the upstream returned: code for authorization-code channels, access_token and refresh_token for channels such as Mirasim that return tokens directly. This works even if the localhost page cannot open. Do not replace localhost with the server address.',
   callbackIncomplete:
-    'Paste the complete callback URL containing code and state, not the authorization link, a code alone, or the localhost homepage.',
+    'Paste the complete callback URL containing state: code for authorization-code channels, or access_token and refresh_token for channels that return tokens directly. Do not paste the authorization link, a code alone, or the localhost homepage.',
   callbackTarget:
     'Use the full callback URL for {address}, keeping its original host, port and path.',
   callbackSessionMismatch:
@@ -232,15 +254,26 @@ export const enUS: typeof zhCN = {
 
 export const jaJP: typeof zhCN = {
   linkStep: '認証リンクをコピーしてログイン',
+  providerLogin: '{provider} でログイン',
+  emailStep: 'またはメール認証コードでログイン',
+  emailAddress: 'メール',
+  emailSend: 'コードを送信',
+  emailCode: '認証コード',
+  emailVerify: '確認してログイン',
+  emailSent: 'コードを送信しました。同じログインでは 60 秒に 1 回、最大 3 回までです。',
+  emailInvalid: '有効なメールアドレスと認証コードを入力してください。',
+  emailLimited: '送信または確認の上限に達しました。ログインをやり直してください。',
+  emailRejected: '認証コードが拒否されたか、ログインが受け付けられませんでした。',
+  emailFailed: 'メールログインが完了しませんでした。もう一度お試しください。',
   copyAuthorization: '完全な認証リンクをコピー',
   copyLink: 'リンクをコピー',
   authenticating: '認証中',
   callbackStep: '完全なコールバック URL を貼り付け',
-  callbackPlaceholder: 'http://localhost:ポート/コールバックパス?code=…&state=…',
+  callbackPlaceholder: 'http://localhost:ポート/コールバックパス?state=…',
   callbackHelp:
-    'ログイン後、アドレスバーの code と state を含む完全な URL を貼り付けてください。localhost のページを開けなくても利用できます。localhost をサーバーのアドレスに置き換えないでください。',
+    'ログイン後、アドレスバーの完全な URL を貼り付けてください。state と、上流が返したパラメータ（認可コード方式は code、Mirasim のようにトークンを直接返す方式は access_token と refresh_token）をそのまま残します。localhost のページを開けなくても利用できます。localhost をサーバーのアドレスに置き換えないでください。',
   callbackIncomplete:
-    '認証リンクやコード単体、localhost のトップページではなく、code と state を含む完全なコールバック URL を貼り付けてください。',
+    'state を含む完全なコールバック URL を貼り付けてください。認可コード方式は code、トークンを直接返す方式は access_token と refresh_token が必要です。認証リンクやコード単体、localhost のトップページは貼り付けないでください。',
   callbackTarget:
     '{address} に対応する完全なコールバック URL を使用し、ホスト・ポート・パスを変更しないでください。',
   callbackSessionMismatch:

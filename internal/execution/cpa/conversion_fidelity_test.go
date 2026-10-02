@@ -188,15 +188,21 @@ func TestAdapterPreservesAnthropicInstructionsOnResponsesTargets(t *testing.T) {
 				if !reflect.DeepEqual(order, wantOrder) {
 					t.Fatalf("upstream message order = %v, want %v", order, wantOrder)
 				}
+				offset := 0
 				for path, want := range map[string]string{
-					"input.0.content.0.text": "GLOBAL", "input.1.content.0.text": "PREFIX",
-					"input.4.content.0.text": "MID_ONE", "input.4.content.1.text": "MID_TWO",
-					"input.5.content.0.text": "EXISTING_DEVELOPER",
-					"input.6.content.0.text": "<system-reminder>ordinary reminder</system-reminder>",
-					"input.7.call_id":        "call_lookup", "input.7.name": "lookup",
-					"input.8.content.0.text": "DURING_TOOL", "input.9.call_id": "call_lookup",
-					"input.9.output":          "tool result",
-					"input.10.content.0.text": "next", "reasoning.effort": "high",
+					fmt.Sprintf("input.%d.content.0.text", offset):    "GLOBAL",
+					fmt.Sprintf("input.%d.content.0.text", offset+1):  "PREFIX",
+					fmt.Sprintf("input.%d.content.0.text", offset+4):  "MID_ONE",
+					fmt.Sprintf("input.%d.content.1.text", offset+4):  "MID_TWO",
+					fmt.Sprintf("input.%d.content.0.text", offset+5):  "EXISTING_DEVELOPER",
+					fmt.Sprintf("input.%d.content.0.text", offset+6):  "<system-reminder>ordinary reminder</system-reminder>",
+					fmt.Sprintf("input.%d.call_id", offset+7):         "call_lookup",
+					fmt.Sprintf("input.%d.name", offset+7):            "lookup",
+					fmt.Sprintf("input.%d.content.0.text", offset+8):  "DURING_TOOL",
+					fmt.Sprintf("input.%d.call_id", offset+9):         "call_lookup",
+					fmt.Sprintf("input.%d.output", offset+9):          "tool result",
+					fmt.Sprintf("input.%d.content.0.text", offset+10): "next",
+					"reasoning.effort": "high",
 				} {
 					if got := gjson.GetBytes(wire, path).String(); got != want {
 						t.Errorf("upstream %s = %q, want %q", path, got, want)

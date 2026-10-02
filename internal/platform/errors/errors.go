@@ -56,6 +56,8 @@ var (
 	ErrAuthorizationUnavailable               = &APIError{HTTPStatus: http.StatusServiceUnavailable, Code: "AUTHORIZATION_UNAVAILABLE", Message: "Browser authorization is unavailable"}
 	ErrAuthorizationStateInvalid              = &APIError{HTTPStatus: http.StatusBadRequest, Code: "AUTHORIZATION_STATE_INVALID", Message: "Authorization state is invalid"}
 	ErrAuthorizationExchangeFailed            = &APIError{HTTPStatus: http.StatusBadGateway, Code: "AUTHORIZATION_EXCHANGE_FAILED", Message: "Authorization exchange failed"}
+	ErrEmailLoginLimited                      = &APIError{HTTPStatus: http.StatusTooManyRequests, Code: "EMAIL_LOGIN_LIMITED", Message: "Email sign-in is temporarily limited"}
+	ErrEmailLoginRejected                     = &APIError{HTTPStatus: http.StatusBadGateway, Code: "EMAIL_LOGIN_REJECTED", Message: "Email sign-in was rejected"}
 	ErrStagedCredentialNotReady               = &APIError{HTTPStatus: http.StatusConflict, Code: "STAGED_CREDENTIAL_NOT_READY", Message: "Staged credential is not ready"}
 	ErrStagedCredentialExpired                = &APIError{HTTPStatus: http.StatusGone, Code: "STAGED_CREDENTIAL_EXPIRED", Message: "Staged credential expired"}
 	ErrStagedCredentialConsumed               = &APIError{HTTPStatus: http.StatusConflict, Code: "STAGED_CREDENTIAL_CONSUMED", Message: "Staged credential was already consumed"}

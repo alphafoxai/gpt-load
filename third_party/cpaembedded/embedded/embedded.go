@@ -960,6 +960,9 @@ func (o *executionObservation) observeQuotaSignals(header http.Header, observedA
 }
 
 func (o *executionObservation) responseHeaders() http.Header {
+	if o == nil {
+		return make(http.Header)
+	}
 	o.mu.RLock()
 	defer o.mu.RUnlock()
 	header := make(http.Header)

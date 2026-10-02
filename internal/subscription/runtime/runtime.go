@@ -135,6 +135,19 @@ type Authorization struct {
 	// RedirectURI is populated by the compiled runtime from the driver's fixed
 	// local callback declaration. It is safe to expose with the Stage result.
 	RedirectURI string
+	// Providers lists every browser sign-in option the upstream offered. URL
+	// remains the default option so a client that only opens one link still works.
+	Providers []AuthorizationProvider
+	// EmailLogin reports that this stage can also finish with a mailed code.
+	EmailLogin bool
+}
+
+// AuthorizationProvider is one upstream browser sign-in option. It carries no
+// secret; the pending stage state is already inside the callback URL.
+type AuthorizationProvider struct {
+	ID    string
+	Label string
+	URL   string
 }
 
 // LocalCallbackSpec declares one fixed loopback OAuth redirect endpoint.
@@ -148,6 +161,11 @@ type AuthorizationCompletion struct {
 	ReturnedState string
 	Code          string
 	DriverState   []byte
+	// AccessToken and RefreshToken carry a provider callback that returns the
+	// credential directly instead of an OAuth code. They stay empty for every
+	// code-exchange channel.
+	AccessToken  string
+	RefreshToken string
 }
 
 // Driver owns one subscription credential schema and refresh lifecycle.
@@ -191,6 +209,22 @@ type BrowserAuthorizationDriver interface {
 	LocalCallback() (LocalCallbackSpec, bool)
 }
 
+// EmailCodeLoginDriver is implemented by a browser channel that can also
+// exchange a mailed sign-in code for the same credential. DriverState is the
+// encrypted stage payload and must not be logged.
+type EmailCodeLoginDriver interface {
+	SendEmailLoginCode(context.Context, []byte, string) error
+	ExchangeEmailLoginCode(context.Context, []byte, string, string) (string, string, error)
+}
+
+var (
+	// ErrEmailLoginRejected means the authentication service refused the address
+	// or code. The upstream body is intentionally not attached.
+	ErrEmailLoginRejected = errors.New("email sign-in was rejected")
+	// ErrEmailLoginUnavailable means the authentication service could not be reached.
+	ErrEmailLoginUnavailable = errors.New("email sign-in is unavailable")
+)
+
 // DeviceAuthorization describes one RFC 8628 device challenge. DriverState
 // contains secrets and is persisted only inside the encrypted Stage payload.
 type DeviceAuthorization struct {
@@ -199,6 +233,9 @@ type DeviceAuthorization struct {
 	DriverState     []byte
 	ExpiresAt       time.Time
 	PollInterval    time.Duration
+	// Providers lists extra browser links for the same polled sign-in.
+	// VerificationURL stays the default so a client that opens one link still works.
+	Providers []AuthorizationProvider
 }
 
 // DeviceAuthorizationStatus is the bounded result of one token-endpoint poll.

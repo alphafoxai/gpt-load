@@ -81,6 +81,8 @@ func NewAdapter(credentials *subscription.CredentialManager, channels *channel.R
 			newClaudeProviderBridge(),
 			newAntigravityProviderBridge(),
 			newGrokProviderBridge(),
+			newMirasimProviderBridge(),
+			newZCodeProviderBridge(),
 		),
 	}
 }
@@ -142,6 +144,11 @@ func (a *Adapter) Execute(ctx context.Context, spec execution.AttemptSpec) (resu
 	if validator, ok := provider.(providerRequestValidator); ok {
 		if err := validator.ValidateRequest(request); err != nil {
 			return execution.AttemptResult{DispatchState: execution.DispatchNotSent, Error: requestValidationEvidence(err)}
+		}
+	}
+	if !countTokensOperation(spec.Operation) {
+		if request.Headers == nil {
+			request.Headers = make(http.Header)
 		}
 	}
 	if countTokensOperation(spec.Operation) {
@@ -329,6 +336,9 @@ func (a *Adapter) ExecuteStream(
 		if err := validator.ValidateRequest(request); err != nil {
 			return execution.StreamResult{DispatchState: execution.DispatchNotSent, Error: requestValidationEvidence(err)}
 		}
+	}
+	if request.Headers == nil {
+		request.Headers = make(http.Header)
 	}
 	preparedCredential, evidence := a.credentials.Prepare(ctx, channel.ID(spec.ChannelID), spec.Credential, spec.ForceCredentialRefresh)
 	if evidence != nil {

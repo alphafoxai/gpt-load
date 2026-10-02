@@ -26,13 +26,16 @@ import (
 const (
 	credentialStageReadyTTL     = 30 * time.Minute
 	credentialStageAuthTTL      = 5 * time.Minute
-	credentialStageDeviceMaxTTL = 30 * time.Minute
+	credentialStageAuthMaxTTL   = 30 * time.Minute
 	credentialStageTombstoneTTL = 24 * time.Hour
 	maxCredentialStageIDs       = 1000
 	maxOAuthFileBytes           = 64 * 1024
 	maxDeviceAuthorizationURL   = 4096
 	maxDeviceAuthorizationCode  = 128
 	stagedSubscriptionSchemaV2  = 2
+	maxEmailCodeSends           = 3
+	emailCodeSendInterval       = 60 * time.Second
+	maxEmailVerifyAttempts      = 5
 )
 
 func credentialImportContext(ctx context.Context) (context.Context, context.CancelFunc) {
@@ -69,28 +72,46 @@ type CredentialStageAccount struct {
 	LastRefreshAtMS *int64 `json:"last_refresh_at_ms,omitempty"`
 }
 
+type CredentialStageLoginProvider struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+	URL   string `json:"url"`
+}
+
 type CredentialStageResult struct {
-	StageID             string                 `json:"stage_id"`
-	Status              string                 `json:"status"`
-	AuthorizationMethod string                 `json:"authorization_method,omitempty"`
-	AuthorizationURL    string                 `json:"authorization_url,omitempty"`
-	RedirectURI         string                 `json:"redirect_uri,omitempty"`
-	UserCode            string                 `json:"user_code,omitempty"`
-	NextPollAtMS        int64                  `json:"next_poll_at_ms,omitempty"`
-	Account             CredentialStageAccount `json:"account"`
-	ExpiresAtMS         int64                  `json:"expires_at_ms"`
-	ErrorCode           string                 `json:"error_code,omitempty"`
+	StageID             string                         `json:"stage_id"`
+	Status              string                         `json:"status"`
+	AuthorizationMethod string                         `json:"authorization_method,omitempty"`
+	AuthorizationURL    string                         `json:"authorization_url,omitempty"`
+	LoginProviders      []CredentialStageLoginProvider `json:"login_providers,omitempty"`
+	EmailLogin          bool                           `json:"email_login,omitempty"`
+	RedirectURI         string                         `json:"redirect_uri,omitempty"`
+	UserCode            string                         `json:"user_code,omitempty"`
+	NextPollAtMS        int64                          `json:"next_poll_at_ms,omitempty"`
+	Account             CredentialStageAccount         `json:"account"`
+	ExpiresAtMS         int64                          `json:"expires_at_ms"`
+	ErrorCode           string                         `json:"error_code,omitempty"`
 }
 
 type credentialStageAuthorizationSummary struct {
-	AuthorizationURL string `json:"authorization_url"`
-	UserCode         string `json:"user_code"`
-	NextPollAtMS     int64  `json:"next_poll_at_ms"`
-	PollIntervalMS   int64  `json:"poll_interval_ms"`
+	AuthorizationURL string                         `json:"authorization_url"`
+	LoginProviders   []CredentialStageLoginProvider `json:"login_providers,omitempty"`
+	EmailLogin       bool                           `json:"email_login,omitempty"`
+	UserCode         string                         `json:"user_code"`
+	NextPollAtMS     int64                          `json:"next_poll_at_ms"`
+	PollIntervalMS   int64                          `json:"poll_interval_ms"`
 }
 
 type credentialStageSafeSummary struct {
 	Authorization *credentialStageAuthorizationSummary `json:"authorization,omitempty"`
+}
+
+type stagedEmailLogin struct {
+	Email    string `json:"email,omitempty"`
+	SentAtMS int64  `json:"sent_at_ms,omitempty"`
+	Sends    int    `json:"sends,omitempty"`
+	Attempts int    `json:"attempts,omitempty"`
+	Mailed   bool   `json:"mailed,omitempty"`
 }
 
 type stagedSubscriptionPayload struct {
@@ -98,6 +119,7 @@ type stagedSubscriptionPayload struct {
 	State       string                              `json:"state,omitempty"`
 	DriverState json.RawMessage                     `json:"driver_state,omitempty"`
 	Network     *subscriptionruntime.NetworkContext `json:"network,omitempty"`
+	EmailLogin  *stagedEmailLogin                   `json:"email_login,omitempty"`
 }
 
 func (s *Service) stagedNetworkContext(
@@ -621,12 +643,25 @@ func (s *Service) beginBrowserCredentialAuthorization(
 		return CredentialStageResult{}, app_errors.ErrInternalServer
 	}
 	now := s.now().UTC()
-	expiresAt := now.Add(credentialStageAuthTTL)
+	expiresAt := browserStageExpiry(now, authorization.ExpiresAt)
+	loginProviders := credentialStageLoginProviders(authorization.Providers)
+	summaryJSON := models.JSON(`{}`)
+	if len(loginProviders) > 0 || authorization.EmailLogin {
+		encoded, err := json.Marshal(credentialStageSafeSummary{Authorization: &credentialStageAuthorizationSummary{
+			AuthorizationURL: authorization.URL,
+			LoginProviders:   loginProviders,
+			EmailLogin:       authorization.EmailLogin,
+		}})
+		if err != nil {
+			return CredentialStageResult{}, app_errors.ErrInternalServer
+		}
+		summaryJSON = models.JSON(encoded)
+	}
 	row := models.CredentialStage{
 		ID: stageID, ChannelID: string(channelID),
 		ConnectionType:      models.ConnectionTypeSubscription,
 		AuthorizationMethod: "browser_oauth", Status: models.CredentialStagePendingAuthorization,
-		EncryptedPayload: ciphertext, PayloadSchemaVersion: stagedSubscriptionSchemaV2, SafeSummaryJSON: models.JSON(`{}`),
+		EncryptedPayload: ciphertext, PayloadSchemaVersion: stagedSubscriptionSchemaV2, SafeSummaryJSON: summaryJSON,
 		OAuthStateHash: pointerTo(s.encryption.Hash("oauth-state/v1|" + authorization.State)),
 		ExpiresAtMS:    expiresAt.UnixMilli(), CreatedAtMS: now.UnixMilli(), UpdatedAtMS: now.UnixMilli(),
 	}
@@ -635,10 +670,47 @@ func (s *Service) beginBrowserCredentialAuthorization(
 	}
 	return CredentialStageResult{
 		StageID: row.ID, Status: string(row.Status), AuthorizationMethod: row.AuthorizationMethod,
-		AuthorizationURL: authorization.URL,
-		RedirectURI:      authorization.RedirectURI,
-		Account:          CredentialStageAccount{}, ExpiresAtMS: row.ExpiresAtMS,
+		AuthorizationURL: authorization.URL, LoginProviders: loginProviders, EmailLogin: authorization.EmailLogin,
+		RedirectURI: authorization.RedirectURI,
+		Account:     CredentialStageAccount{}, ExpiresAtMS: row.ExpiresAtMS,
 	}, nil
+}
+
+func credentialStageLoginProviders(providers []subscriptionruntime.AuthorizationProvider) []CredentialStageLoginProvider {
+	if len(providers) == 0 {
+		return nil
+	}
+	result := make([]CredentialStageLoginProvider, 0, len(providers))
+	seen := map[string]bool{}
+	for _, provider := range providers {
+		id := strings.ToLower(strings.TrimSpace(provider.ID))
+		label := strings.TrimSpace(provider.Label)
+		link := strings.TrimSpace(provider.URL)
+		if id == "" || label == "" || link == "" || seen[id] {
+			continue
+		}
+		parsed, err := url.Parse(link)
+		if err != nil || !parsed.IsAbs() || parsed.User != nil || !strings.EqualFold(parsed.Scheme, "https") {
+			continue
+		}
+		seen[id] = true
+		result = append(result, CredentialStageLoginProvider{ID: id, Label: label, URL: link})
+	}
+	return result
+}
+
+// browserStageExpiry keeps a pending browser authorization alive for at least
+// the default window and honours a longer window declared by the driver, capped
+// so a faulty driver cannot pin a pending stage indefinitely.
+func browserStageExpiry(now time.Time, declared time.Time) time.Time {
+	expiresAt := now.Add(credentialStageAuthTTL)
+	if declared.After(expiresAt) {
+		expiresAt = declared
+	}
+	if limit := now.Add(credentialStageAuthMaxTTL); expiresAt.After(limit) {
+		expiresAt = limit
+	}
+	return expiresAt.UTC()
 }
 
 func (s *Service) beginDeviceCredentialAuthorization(
@@ -666,12 +738,14 @@ func (s *Service) beginDeviceCredentialAuthorization(
 		len(verificationURL) > maxDeviceAuthorizationURL || !validDeviceAuthorizationCode(userCode) ||
 		len(authorization.DriverState) == 0 || len(authorization.DriverState) > maxOAuthFileBytes ||
 		!intervalOK || !authorization.ExpiresAt.After(now) ||
-		authorization.ExpiresAt.After(now.Add(credentialStageDeviceMaxTTL)) {
+		authorization.ExpiresAt.After(now.Add(credentialStageAuthMaxTTL)) {
 		return CredentialStageResult{}, app_errors.ErrAuthorizationUnavailable
 	}
 	nextPollAtMS := now.Add(pollInterval).UnixMilli()
+	loginProviders := credentialStageLoginProviders(authorization.Providers)
 	summaryJSON, err := json.Marshal(credentialStageSafeSummary{Authorization: &credentialStageAuthorizationSummary{
 		AuthorizationURL: verificationURL,
+		LoginProviders:   loginProviders,
 		UserCode:         userCode,
 		NextPollAtMS:     nextPollAtMS,
 		PollIntervalMS:   pollInterval.Milliseconds(),
@@ -704,7 +778,7 @@ func (s *Service) beginDeviceCredentialAuthorization(
 	}
 	return CredentialStageResult{
 		StageID: row.ID, Status: string(row.Status), AuthorizationMethod: row.AuthorizationMethod,
-		AuthorizationURL: verificationURL, UserCode: userCode, NextPollAtMS: nextPollAtMS,
+		AuthorizationURL: verificationURL, LoginProviders: loginProviders, UserCode: userCode, NextPollAtMS: nextPollAtMS,
 		Account: CredentialStageAccount{}, ExpiresAtMS: row.ExpiresAtMS,
 	}, nil
 }
@@ -735,7 +809,7 @@ func (s *Service) CompleteCredentialAuthorization(
 	returnedState string,
 	code string,
 ) (CredentialStageResult, error) {
-	return s.completeCredentialAuthorization(ctx, "", "", returnedState, code)
+	return s.completeCredentialAuthorization(ctx, "", "", returnedState, code, "", "")
 }
 
 func (s *Service) completeCredentialAuthorizationForStage(
@@ -747,16 +821,15 @@ func (s *Service) completeCredentialAuthorizationForStage(
 	if strings.TrimSpace(stageID) == "" {
 		return CredentialStageResult{}, app_errors.ErrAuthorizationStateInvalid
 	}
-	return s.completeCredentialAuthorization(ctx, stageID, "", returnedState, code)
+	return s.completeCredentialAuthorization(ctx, stageID, "", returnedState, code, "", "")
 }
 
 func (s *Service) completeCredentialAuthorizationFromCallback(
 	ctx context.Context,
 	callback subscriptionruntime.LocalCallbackSpec,
-	returnedState string,
-	code string,
+	parameters oauthCallbackParameters,
 ) (CredentialStageResult, error) {
-	return s.completeCredentialAuthorization(ctx, "", callback.RedirectURI, returnedState, code)
+	return s.completeCredentialAuthorization(ctx, "", callback.RedirectURI, parameters.State, parameters.Code, parameters.AccessToken, parameters.RefreshToken)
 }
 
 func (s *Service) completeCredentialAuthorization(
@@ -765,9 +838,13 @@ func (s *Service) completeCredentialAuthorization(
 	expectedRedirectURI string,
 	returnedState string,
 	code string,
+	accessToken string,
+	refreshToken string,
 ) (CredentialStageResult, error) {
+	hasCode := strings.TrimSpace(code) != ""
+	hasTokens := strings.TrimSpace(accessToken) != "" && strings.TrimSpace(refreshToken) != ""
 	if s == nil || s.completeSubscriptionAuthorization == nil || strings.TrimSpace(returnedState) == "" ||
-		strings.TrimSpace(code) == "" {
+		(!hasCode && !hasTokens) {
 		return CredentialStageResult{}, app_errors.ErrAuthorizationStateInvalid
 	}
 	stateHash := s.encryption.Hash("oauth-state/v1|" + returnedState)
@@ -840,6 +917,7 @@ func (s *Service) completeCredentialAuthorization(
 	credential, err := s.completeSubscriptionAuthorization(exchangeContext, channelID, subscriptionruntime.AuthorizationCompletion{
 		ExpectedState: payload.State, ReturnedState: returnedState,
 		Code: code, DriverState: payload.DriverState,
+		AccessToken: accessToken, RefreshToken: refreshToken,
 	})
 	if err != nil {
 		var finalizeErr error
@@ -990,6 +1068,8 @@ func (s *Service) CompleteCredentialAuthorizationCallback(
 		callbackSpec.RedirectURI,
 		callback.State,
 		callback.Code,
+		callback.AccessToken,
+		callback.RefreshToken,
 	)
 }
 
@@ -1203,6 +1283,8 @@ func (s *Service) GetCredentialStage(ctx context.Context, stageID string) (Crede
 	}
 	if authorization != nil {
 		result.AuthorizationURL = authorization.AuthorizationURL
+		result.LoginProviders = authorization.LoginProviders
+		result.EmailLogin = authorization.EmailLogin
 		result.UserCode = authorization.UserCode
 		result.NextPollAtMS = authorization.NextPollAtMS
 	}

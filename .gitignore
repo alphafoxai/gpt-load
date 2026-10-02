@@ -11,6 +11,8 @@ dist/
 bin/
 coverage/
 go.work
+/release/gpt-load*
+/release/*.gz
 
 # Local environment and secrets
 .env*

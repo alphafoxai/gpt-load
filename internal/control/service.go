@@ -68,6 +68,8 @@ type Service struct {
 	operationRandom                   io.Reader
 	beginSubscriptionAuthorization    func(channel.ID) (subscriptionruntime.Authorization, error)
 	completeSubscriptionAuthorization func(context.Context, channel.ID, subscriptionruntime.AuthorizationCompletion) (subscriptionruntime.Credential, error)
+	sendSubscriptionEmailCode         func(context.Context, channel.ID, []byte, string) error
+	exchangeSubscriptionEmailCode     func(context.Context, channel.ID, []byte, string, string) (string, string, error)
 	beginDeviceAuthorization          func(context.Context, channel.ID) (subscriptionruntime.DeviceAuthorization, error)
 	pollDeviceAuthorization           func(context.Context, channel.ID, []byte) (subscriptionruntime.DeviceAuthorizationPoll, error)
 	refreshSubscriptionCredential     func(context.Context, channel.ID, subscriptionruntime.Credential) (subscriptionruntime.Credential, error)
@@ -208,6 +210,20 @@ func NewService(
 			}
 			return browser.CompleteAuthorization(ctx, completion)
 		},
+		sendSubscriptionEmailCode: func(ctx context.Context, channelID channel.ID, driverState []byte, email string) error {
+			emailLogin, ok := subscriptionsEmailLogin(subscriptions, channelID)
+			if !ok {
+				return app_errors.ErrValidation
+			}
+			return emailLogin.SendEmailLoginCode(ctx, driverState, email)
+		},
+		exchangeSubscriptionEmailCode: func(ctx context.Context, channelID channel.ID, driverState []byte, email, code string) (string, string, error) {
+			emailLogin, ok := subscriptionsEmailLogin(subscriptions, channelID)
+			if !ok {
+				return "", "", app_errors.ErrValidation
+			}
+			return emailLogin.ExchangeEmailLoginCode(ctx, driverState, email, code)
+		},
 		beginDeviceAuthorization: func(ctx context.Context, channelID channel.ID) (subscriptionruntime.DeviceAuthorization, error) {
 			device, ok := subscriptionsDevice(subscriptions, channelID)
 			if !ok {
@@ -301,6 +317,15 @@ func subscriptionsBrowser(runtime *subscriptionruntime.Runtime, channelID channe
 		return nil, false
 	}
 	return runtime.BrowserAuthorization(channelID)
+}
+
+func subscriptionsEmailLogin(runtime *subscriptionruntime.Runtime, channelID channel.ID) (subscriptionruntime.EmailCodeLoginDriver, bool) {
+	driver, ok := subscriptionsDriver(runtime, channelID)
+	if !ok {
+		return nil, false
+	}
+	emailLogin, ok := driver.(subscriptionruntime.EmailCodeLoginDriver)
+	return emailLogin, ok
 }
 
 func subscriptionsDevice(runtime *subscriptionruntime.Runtime, channelID channel.ID) (subscriptionruntime.DeviceAuthorizationDriver, bool) {

@@ -75,7 +75,15 @@ func (a *Adapter) OpenWebsocket(ctx context.Context, spec execution.AttemptSpec)
 	if err != nil {
 		return reject()
 	}
-	observationSpec := execution.AttemptSpec{Credential: execution.NewCredentialSnapshot(spec.Credential.ID, spec.Credential.Version, spec.Credential.IdentityGeneration, nil)}
+	headers := spec.Header.Clone()
+	if headers == nil {
+		headers = make(http.Header)
+	}
+	spec.Header = headers
+	observationSpec := execution.AttemptSpec{
+		ChannelID: spec.ChannelID, UpstreamModel: spec.UpstreamModel,
+		Credential: execution.NewCredentialSnapshot(spec.Credential.ID, spec.Credential.Version, spec.Credential.IdentityGeneration, nil),
+	}
 	observed := &observedWebsocketSession{adapter: a, spec: observationSpec}
 	s, err := opener.openWebsocket(spec, credential, baseURL, settings.URL, observed.observeHeaders)
 	if err != nil {

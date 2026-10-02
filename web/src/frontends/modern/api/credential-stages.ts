@@ -1,7 +1,7 @@
 import type { ApiClient } from '@shared/http/client'
 import { InvalidResponseError } from '@shared/http/errors'
 import type { AuthorizationMethod, ProxyOverride, GroupCreateResult } from './group-create'
-import { integer, list, oneOf, record, text } from './response'
+import { boolean, integer, list, oneOf, record, text } from './response'
 
 export const stageStatuses = [
   'pending_authorization',
@@ -13,11 +13,18 @@ export const stageStatuses = [
   'expired',
   'outcome_unknown',
 ] as const
+export interface CredentialLoginProvider {
+  id: string
+  label: string
+  url: string
+}
 export interface CredentialStage {
   id: string
   status: (typeof stageStatuses)[number]
   method?: AuthorizationMethod
   authorizationURL?: string
+  loginProviders?: CredentialLoginProvider[]
+  emailLogin?: boolean
   redirectURI?: string
   userCode?: string
   nextPollAt?: number
@@ -78,12 +85,28 @@ function readStage(value: unknown): CredentialStage {
           ] as const),
     authorizationURL:
       data.authorization_url === undefined ? undefined : httpURL(data.authorization_url),
+    loginProviders:
+      data.login_providers === undefined ? undefined : readLoginProviders(data.login_providers),
+    emailLogin: data.email_login === undefined ? undefined : boolean(data.email_login),
     redirectURI: data.redirect_uri === undefined ? undefined : httpURL(data.redirect_uri),
     userCode: data.user_code === undefined ? undefined : text(data.user_code),
     nextPollAt: data.next_poll_at_ms === undefined ? undefined : integer(data.next_poll_at_ms),
     email: account.email_mask === undefined ? undefined : text(account.email_mask),
     errorCode: errorCode(data.error_code),
   }
+}
+function readLoginProviders(value: unknown): CredentialLoginProvider[] {
+  const providers = list(value).map((item) => {
+    const provider = record(item)
+    const id = text(provider.id)
+    const label = text(provider.label)
+    if (!/^[a-z][a-z0-9_-]{0,63}$/u.test(id) || label.trim() === '' || label.length > 64)
+      throw new InvalidResponseError()
+    return { id, label, url: httpURL(provider.url) }
+  })
+  if (new Set(providers.map((provider) => provider.id)).size !== providers.length)
+    throw new InvalidResponseError()
+  return providers
 }
 function requestedStage(value: unknown, id: string): CredentialStage {
   const result = readStage(value)
@@ -141,6 +164,34 @@ export async function completeAuthorization(
     await client.request(`/api/credential-stages/${stageID(id)}/oauth-callback`, {
       method: 'POST',
       json: { callback_url: callbackURL },
+      signal,
+    }),
+    id,
+  )
+}
+export async function sendCredentialEmailCode(
+  client: ApiClient,
+  id: string,
+  email: string,
+  signal: AbortSignal,
+): Promise<void> {
+  await client.request(`/api/credential-stages/${stageID(id)}/email-code`, {
+    method: 'POST',
+    json: { email },
+    signal,
+  })
+}
+export async function verifyCredentialEmailCode(
+  client: ApiClient,
+  id: string,
+  email: string,
+  code: string,
+  signal: AbortSignal,
+): Promise<CredentialStage> {
+  return requestedStage(
+    await client.request(`/api/credential-stages/${stageID(id)}/email-verify`, {
+      method: 'POST',
+      json: { email, code },
       signal,
     }),
     id,

@@ -14,6 +14,8 @@ func builtInModules() []spec.Module {
 		modules.Claude(),
 		modules.Antigravity(),
 		modules.Grok(),
+		modules.Mirasim(),
+		modules.ZCode(),
 		modules.Anthropic(),
 		modules.Gemini(),
 		modules.AzureOpenAI(),
