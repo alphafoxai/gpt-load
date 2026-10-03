@@ -39,6 +39,8 @@ type ForwardInput struct {
 	UpstreamModelID      string
 	OnStreamReady        func()
 	OnFirstResponse      func()
+	// OnFirstOutput 仅供自动选模记录成功交付的首次生成内容。
+	OnFirstOutput func()
 	// OnResponse 在原生 Response 对象下发前登记归属，不承担上游执行。
 	OnResponse func([]byte) error
 
