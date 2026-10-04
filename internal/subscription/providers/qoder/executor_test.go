@@ -32,6 +32,9 @@ func TestExecuteSignsAndTranslatesSSE(t *testing.T) {
 		if r.Header.Get("Cosy-User") != "user-1" {
 			t.Errorf("user %q", r.Header.Get("Cosy-User"))
 		}
+		if r.Header.Get("Accept") != "text/event-stream" || r.Header.Get("X-Model-Key") != "Qwen3.8-Flash" || r.Header.Get("Cache-Control") != "no-cache" {
+			t.Errorf("chat headers accept=%q key=%q cache=%q", r.Header.Get("Accept"), r.Header.Get("X-Model-Key"), r.Header.Get("Cache-Control"))
+		}
 		w.Header().Set("Content-Type", "text/event-stream")
 		writeSSE(w, `{"choices":[{"delta":{"content":"hello"}}]}`)
 		writeSSE(w, `{"usage":{"prompt_tokens":3,"completion_tokens":1}}`)

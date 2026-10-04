@@ -13,6 +13,7 @@ var effortOrder = []string{"minimal", "low", "medium", "high", "xhigh", "max"}
 type modelSpec struct {
 	Key           string
 	Name          string
+	Source        string
 	Config        json.RawMessage
 	Thinks        bool
 	AlwaysThinks  bool
@@ -57,13 +58,14 @@ func modelFromRaw(raw json.RawMessage) modelSpec {
 	var header struct {
 		Key            string `json:"key"`
 		DisplayName    string `json:"display_name"`
+		Source         string `json:"source"`
 		IsReasoning    bool   `json:"is_reasoning"`
 		MaxInputTokens int    `json:"max_input_tokens"`
 	}
 	_ = json.Unmarshal(raw, &header)
 	windows, def := windowsOf(raw)
 	spec := modelSpec{
-		Key: header.Key, Name: strings.TrimSpace(header.DisplayName), Config: append(json.RawMessage(nil), raw...),
+		Key: header.Key, Name: strings.TrimSpace(header.DisplayName), Source: strings.TrimSpace(header.Source), Config: append(json.RawMessage(nil), raw...),
 		Thinks: header.IsReasoning, Windows: windows, DefaultWindow: def, MaxInput: header.MaxInputTokens,
 	}
 	if len(windows) > 0 {

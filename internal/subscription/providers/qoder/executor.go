@@ -177,6 +177,10 @@ func Execute(ctx context.Context, cred Credential, format string, payload []byte
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	headers["Accept"] = "text/event-stream"
+	headers["Cache-Control"] = "no-cache"
+	headers["X-Model-Key"] = model.Key
+	headers["X-Model-Source"] = model.Source
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(wire))
 	if err != nil {
 		return nil, nil, nil, err
