@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
 	"time"
 
 	"gpt-load/internal/channel/modules"
@@ -45,10 +46,43 @@ func (client *apiClient) site(id string) (site, bool) {
 type driver struct{}
 
 func Implementations() subscriptionruntime.Implementations {
-	return subscriptionruntime.Implementations{Drivers: []subscriptionruntime.Driver{driver{}}}
+	return subscriptionruntime.Implementations{
+		Drivers:          []subscriptionruntime.Driver{driver{}},
+		ModelDiscoveries: []subscriptionruntime.ModelDiscovery{modelDiscovery{}},
+	}
 }
 
+type modelDiscovery struct{}
+
+func (modelDiscovery) ID() spec.UtilityID { return modules.QoderModelDiscovery }
+
 func (driver) ID() spec.SubscriptionDriverID { return modules.QoderSubscriptionDriver }
+
+func (modelDiscovery) DiscoverModels(ctx context.Context, credential subscriptionruntime.Credential, _ subscriptionruntime.Target) ([]string, error) {
+	value, err := ParseCredentialJSON(credential.Canonical())
+	if err != nil {
+		return nil, err
+	}
+	s, ok := clientFrom(ctx).site(value.Site)
+	if !ok {
+		return nil, fmt.Errorf("qoder site is unknown")
+	}
+	httpClient := httpClientFromContext(ctx)
+	listing, err := fetchListing(ctx, httpClient, s, value)
+	if err != nil {
+		var upstream *upstreamError
+		if errors.As(err, &upstream) {
+			return nil, &subscriptionruntime.UpstreamHTTPError{StatusCode: upstream.StatusCode()}
+		}
+		return nil, err
+	}
+	names := make([]string, 0, len(listing))
+	for name := range listing {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names, nil
+}
 
 func (driver) Parse(raw []byte) (subscriptionruntime.Credential, error) {
 	value, err := ParseCredentialJSON(raw)

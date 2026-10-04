@@ -31,7 +31,7 @@ func TestRuntimeCompilesAllSubscriptionProviderCapabilities(t *testing.T) {
 		{channel.Antigravity, string(modules.AntigravitySubscriptionDriver), string(modules.AntigravityModelDiscovery), string(modules.AntigravityQuotaObservation), ""},
 		{channel.Grok, string(modules.GrokSubscriptionDriver), string(modules.GrokModelDiscovery), string(modules.GrokQuotaObservation), ""},
 		{channel.Mirasim, string(modules.MirasimSubscriptionDriver), string(modules.MirasimModelDiscovery), string(modules.MirasimQuotaObservation), ""},
-		{channel.Qoder, string(modules.QoderSubscriptionDriver), "", "", ""},
+		{channel.Qoder, string(modules.QoderSubscriptionDriver), string(modules.QoderModelDiscovery), "", ""},
 		{channel.ZCode, string(modules.ZCodeSubscriptionDriver), "", "", ""},
 	}
 	for _, test := range tests {

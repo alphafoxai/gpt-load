@@ -6,7 +6,10 @@ import (
 	"gpt-load/internal/protocol"
 )
 
-const QoderSubscriptionDriver spec.SubscriptionDriverID = "qoder"
+const (
+	QoderSubscriptionDriver spec.SubscriptionDriverID = "qoder"
+	QoderModelDiscovery     spec.UtilityID            = "qoder_models"
+)
 
 // Qoder declares the subscription channel for a Qoder plan. Sign-in is the
 // desktop client's device flow. Upstream chat is translated to Qoder's
@@ -40,6 +43,7 @@ func Qoder() spec.Module {
 			},
 			Capabilities: spec.CapabilityBindings{
 				SubscriptionDriver: QoderSubscriptionDriver,
+				ModelDiscovery:     QoderModelDiscovery,
 			},
 		},
 	}

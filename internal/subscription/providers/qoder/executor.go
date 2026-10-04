@@ -43,6 +43,14 @@ func WithHTTPClient(ctx context.Context, client *http.Client) context.Context {
 	return context.WithValue(ctx, httpClientKey{}, client)
 }
 
+func httpClientFromContext(ctx context.Context) *http.Client {
+	client, err := httpClientFrom(ctx, "")
+	if err != nil || client == nil {
+		return &http.Client{Timeout: 30 * time.Second}
+	}
+	return client
+}
+
 func httpClientFrom(ctx context.Context, proxyURL string) (*http.Client, error) {
 	if proxyURL == "" {
 		if ctx != nil {
