@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"sort"
 	"time"
 
 	"gpt-load/internal/channel/modules"
@@ -76,12 +75,7 @@ func (modelDiscovery) DiscoverModels(ctx context.Context, credential subscriptio
 		}
 		return nil, err
 	}
-	names := make([]string, 0, len(listing))
-	for name := range listing {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names, nil
+	return modelChoices(listing), nil
 }
 
 func (driver) Parse(raw []byte) (subscriptionruntime.Credential, error) {

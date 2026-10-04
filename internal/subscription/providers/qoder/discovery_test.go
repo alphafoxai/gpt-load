@@ -21,10 +21,10 @@ func TestDiscoverModelsUsesAccountListing(t *testing.T) {
 			t.Errorf("authorization %q", r.Header.Get("Authorization"))
 		}
 		_, _ = w.Write([]byte(`{"chat":[
-			{"key":"auto","enable":true},
-			{"key":"Qwen3.8-Flash","enable":true},
-			{"key":"disabled-one","enable":false},
-			{"key":"Qwen3.8-Max","enable":true}
+			{"key":"auto","display_name":"Auto","enable":true},
+			{"key":"qfmodel","display_name":"Qwen3.8-Flash","enable":true},
+			{"key":"disabled-one","display_name":"Hidden","enable":false},
+			{"key":"qmodel","display_name":"Qwen3.8-Max","enable":true}
 		]}`))
 	}))
 	defer server.Close()

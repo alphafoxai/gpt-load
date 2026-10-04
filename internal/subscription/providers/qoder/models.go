@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -11,6 +12,7 @@ var effortOrder = []string{"minimal", "low", "medium", "high", "xhigh", "max"}
 
 type modelSpec struct {
 	Key           string
+	Name          string
 	Config        json.RawMessage
 	Thinks        bool
 	AlwaysThinks  bool
@@ -54,13 +56,14 @@ func parseListing(raw []byte) map[string]modelSpec {
 func modelFromRaw(raw json.RawMessage) modelSpec {
 	var header struct {
 		Key            string `json:"key"`
+		DisplayName    string `json:"display_name"`
 		IsReasoning    bool   `json:"is_reasoning"`
 		MaxInputTokens int    `json:"max_input_tokens"`
 	}
 	_ = json.Unmarshal(raw, &header)
 	windows, def := windowsOf(raw)
 	spec := modelSpec{
-		Key: header.Key, Config: append(json.RawMessage(nil), raw...),
+		Key: header.Key, Name: strings.TrimSpace(header.DisplayName), Config: append(json.RawMessage(nil), raw...),
 		Thinks: header.IsReasoning, Windows: windows, DefaultWindow: def, MaxInput: header.MaxInputTokens,
 	}
 	if len(windows) > 0 {
@@ -206,6 +209,53 @@ func containsInt(values []int, want int) bool {
 		}
 	}
 	return false
+}
+
+// modelChoices is what an operator picks. Qoder's list uses key for the
+// request and display_name for the label; the label is the choice unless it
+// is missing or already taken.
+func modelChoices(listing map[string]modelSpec) []string {
+	keys := make([]string, 0, len(listing))
+	for key := range listing {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	seen := make(map[string]struct{}, len(keys))
+	choices := make([]string, 0, len(keys))
+	for _, key := range keys {
+		label := strings.TrimSpace(listing[key].Name)
+		if label == "" || label == "auto" || label == "default" {
+			label = key
+		}
+		if _, taken := seen[label]; taken {
+			label = key
+		}
+		if _, taken := seen[label]; taken {
+			continue
+		}
+		seen[label] = struct{}{}
+		choices = append(choices, label)
+	}
+	sort.Strings(choices)
+	return choices
+}
+
+func specByName(listing map[string]modelSpec, name string) (modelSpec, bool) {
+	if spec, ok := listing[name]; ok {
+		return spec, true
+	}
+	var found modelSpec
+	matched := false
+	for _, spec := range listing {
+		if spec.Name != name {
+			continue
+		}
+		if !matched || spec.Key < found.Key {
+			found = spec
+			matched = true
+		}
+	}
+	return found, matched
 }
 
 func rank(name string) int {

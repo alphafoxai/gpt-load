@@ -91,7 +91,7 @@ func lookupModel(ctx context.Context, client *http.Client, cred Credential, name
 	cached, fresh := listingCache[key]
 	if fresh && time.Since(cached.at) < listingTTL {
 		listingMu.Unlock()
-		if spec, ok := cached.byKey[name]; ok {
+		if spec, ok := specByName(cached.byKey, name); ok {
 			return spec
 		}
 		return fallback
@@ -104,7 +104,7 @@ func lookupModel(ctx context.Context, client *http.Client, cred Credential, name
 	listingMu.Lock()
 	listingCache[key] = listingEntry{at: time.Now(), byKey: fetched}
 	listingMu.Unlock()
-	if spec, ok := fetched[name]; ok {
+	if spec, ok := specByName(fetched, name); ok {
 		return spec
 	}
 	return fallback
