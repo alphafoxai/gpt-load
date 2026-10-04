@@ -19,6 +19,7 @@ func TestFinalRegistryContainsOnlyApprovedChannels(t *testing.T) {
 		Grok,
 		Mirasim,
 		ZCode,
+		Qoder,
 		Anthropic,
 		Gemini,
 		AzureOpenAI,

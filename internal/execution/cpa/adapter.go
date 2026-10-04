@@ -83,6 +83,7 @@ func NewAdapter(credentials *subscription.CredentialManager, channels *channel.R
 			newGrokProviderBridge(),
 			newMirasimProviderBridge(),
 			newZCodeProviderBridge(),
+			newQoderProviderBridge(),
 		),
 	}
 }

@@ -16,6 +16,7 @@ func builtInModules() []spec.Module {
 		modules.Grok(),
 		modules.Mirasim(),
 		modules.ZCode(),
+		modules.Qoder(),
 		modules.Anthropic(),
 		modules.Gemini(),
 		modules.AzureOpenAI(),

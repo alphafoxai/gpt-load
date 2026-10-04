@@ -30,6 +30,7 @@ const (
 	Grok             = spec.Grok
 	Mirasim          = spec.Mirasim
 	ZCode            = spec.ZCode
+	Qoder            = spec.Qoder
 	Anthropic        = spec.Anthropic
 	Gemini           = spec.Gemini
 	AzureOpenAI      = spec.AzureOpenAI
@@ -221,6 +222,7 @@ const (
 	ProviderGrok                 = spec.ProviderGrok
 	ProviderMirasim              = spec.ProviderMirasim
 	ProviderZCode                = spec.ProviderZCode
+	ProviderQoder                = spec.ProviderQoder
 	ProviderAnthropic            = spec.ProviderAnthropic
 	ProviderGemini               = spec.ProviderGemini
 	ProviderMultiProtocolGateway = spec.ProviderMultiProtocolGateway

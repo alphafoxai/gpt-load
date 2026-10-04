@@ -327,6 +327,7 @@ func newProviderAdapterRegistry(
 		{ProviderKind: channel.ProviderGrok, Adapter: cpa},
 		{ProviderKind: channel.ProviderMirasim, Adapter: cpa},
 		{ProviderKind: channel.ProviderZCode, Adapter: cpa},
+		{ProviderKind: channel.ProviderQoder, Adapter: cpa},
 	}
 	return provideradapter.NewRegistry(channels, bindings)
 }
