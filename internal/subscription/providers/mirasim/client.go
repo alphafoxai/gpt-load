@@ -142,7 +142,7 @@ func (c *Client) do(ctx context.Context, method, requestPath string, query url.V
 		if errAuth != nil {
 			return HTTPResult{}, errAuth
 		}
-		outbound := prepareHeaders(headers, authHeaders, false)
+		outbound := c.prepareOutboundHeaders(headers, authHeaders, false)
 		request, errRequest := http.NewRequestWithContext(ctx, method, endpoint, bytes.NewReader(body))
 		if errRequest != nil {
 			return HTTPResult{}, errRequest
@@ -191,7 +191,7 @@ func (c *Client) DoStream(ctx context.Context, method, requestPath string, query
 		if errAuth != nil {
 			return HTTPResult{}, nil, errAuth
 		}
-		outbound := prepareHeaders(headers, authHeaders, true)
+		outbound := c.prepareOutboundHeaders(headers, authHeaders, true)
 		request, errRequest := http.NewRequestWithContext(ctx, method, endpoint, bytes.NewReader(body))
 		if errRequest != nil {
 			return HTTPResult{}, nil, errRequest
@@ -557,6 +557,32 @@ func http1Transport(base *http.Transport) *http.Transport {
 	config.NextProtos = []string{"http/1.1"}
 	transport.TLSClientConfig = config
 	return transport
+}
+
+// relayUserAgentLocked builds the User-Agent the relay expects on every call.
+// relay.mirasim.ai gates its inference surfaces on client identity and answers
+// anything it does not recognise with 403 "this client is not supported; use the
+// mirasim client or Claude Code". Go fills in Go-http-client/1.1 when the header
+// is absent, which the relay refuses, so the client has to name itself. Keep the
+// version in step with the x-mirasim-client header signed alongside it: the
+// credential carries the version the device was enrolled with.
+func (c *Client) relayUserAgentLocked() string {
+	version := strings.TrimSpace(c.storage.ClientVersion)
+	if version == "" {
+		version = defaultClientVersion
+	}
+	return "mirasim/" + version
+}
+
+func (c *Client) prepareOutboundHeaders(source, auth http.Header, stream bool) http.Header {
+	c.mu.Lock()
+	userAgent := c.relayUserAgentLocked()
+	c.mu.Unlock()
+	headers := prepareHeaders(source, auth, stream)
+	// Always overwrite: the relay rejects clients it does not recognise, so a
+	// downstream agent string cannot be forwarded verbatim.
+	headers.Set("User-Agent", userAgent)
+	return headers
 }
 
 func prepareHeaders(source, auth http.Header, stream bool) http.Header {
