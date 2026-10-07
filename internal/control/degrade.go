@@ -182,11 +182,11 @@ func (s *Service) loadDegradeResults(ctx context.Context) (map[uint][]degradeSto
 	stored := map[uint][]degradeStoredResult{}
 	var row models.SystemSetting
 	err := s.db.WithContext(ctx).Where(&models.SystemSetting{Key: degradeResultsSetting}).Take(&row).Error
-	if err == gorm.ErrRecordNotFound || (err == nil && row.Value == "") {
+	if errors.Is(err, gorm.ErrRecordNotFound) || (err == nil && row.Value == "") {
 		return stored, nil
 	}
 	if err != nil {
-		return nil, app_errors.ParseDBError(err)
+		return nil, err
 	}
 	if err := json.Unmarshal([]byte(row.Value), &stored); err != nil {
 		return nil, app_errors.ErrInternalServer
@@ -201,10 +201,10 @@ func (s *Service) saveDegradeResults(ctx context.Context, stored map[uint][]degr
 	}
 	return s.withControlTransaction(ctx, func(tx *gorm.DB) error {
 		row := models.SystemSetting{Key: degradeResultsSetting, Value: string(encoded)}
-		return app_errors.ParseDBError(tx.Clauses(clause.OnConflict{
+		return tx.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "key"}},
 			DoUpdates: clause.AssignmentColumns([]string{"value", "updated_at_ms"}),
-		}).Create(&row).Error)
+		}).Create(&row).Error
 	})
 }
 
