@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -34,8 +35,18 @@ const (
 	degradeMaxInterval     = 24 * time.Hour
 	degradeDefaultInterval = 30 * time.Minute
 	degradeHistory         = 20
-	degradeConcurrency     = 2
 	degradeAttemptTimeout  = 3 * time.Minute
+	// degradeConcurrency is the reference probe's challenge fan-out: the three
+	// challenges of one credential are asked in parallel, so a credential
+	// finishes in the time of one challenge rather than three.
+	degradeConcurrency = 3
+	// degradeProbeAttempts mirrors the reference probe: an upstream that fails
+	// before it answers is retried, an answer that is merely short is not.
+	degradeProbeAttempts = 3
+	degradeRetryBaseWait = 2 * time.Second
+	// degradeRunTimeout bounds one credential: the challenges run in parallel,
+	// so the budget only has to cover a single challenge using every attempt.
+	degradeRunTimeout = degradeProbeAttempts*degradeAttemptTimeout + time.Minute
 )
 
 // DegradeSchedule is the inspection the board repeats. It only records results;
@@ -408,7 +419,7 @@ func (s *Service) runDegradeCredential(credential DegradeCredentialResponse, mod
 		delete(state.running, credential.CredentialID)
 		state.mu.Unlock()
 	}()
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(degrade.TraceChallenges)*degradeAttemptTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), degradeRunTimeout)
 	defer cancel()
 	started := s.now()
 	result := degradeStoredResult{
@@ -417,27 +428,16 @@ func (s *Service) runDegradeCredential(credential DegradeCredentialResponse, mod
 		StartedAtMS: started.UnixMilli(), BankRevision: degrade.BankRevision(), Status: "completed",
 	}
 	samples := degrade.Challenges(started)
-	collected := make([]degrade.Sample, 0, len(samples))
-	var input, output int64
-	failed := 0
-	for _, challenge := range samples {
-		sample, usage, err := s.degradeProbe(ctx, credential, model, challenge)
-		collected = append(collected, sample)
-		input += usage.input
-		output += usage.output
-		if err != nil {
-			failed++
-		}
-	}
+	collected, usage := s.degradeProbes(ctx, credential, model, samples)
 	result.Samples = collected
-	result.InputTokens, result.OutputTokens = input, output
+	result.InputTokens, result.OutputTokens = usage.input, usage.output
 	attribution, err := analyzeDegradeSamples(collected)
 	if err != nil {
+		// Report why nothing could be scored. The reason names the upstream or
+		// the model, and must not be replaced by whichever sample happened to be
+		// collected last: that masks a timeout as a short answer and vice versa.
 		result.Status = "inconclusive"
-		result.Error = err.Error()
-		if failed == len(samples) && collected[len(collected)-1].Error != "" {
-			result.Error = collected[len(collected)-1].Error
-		}
+		result.Error = degradeInconclusiveReason(collected, err)
 	} else {
 		result.Attribution = &attribution
 		consistent := attribution.Consistent(model)
@@ -453,6 +453,45 @@ func (s *Service) runDegradeCredential(credential DegradeCredentialResponse, mod
 
 type degradeUsage struct{ input, output int64 }
 
+// degradeProbes asks every challenge of one credential in parallel, matching the
+// reference probe's fan-out. Samples are returned in challenge order, and each
+// probe recovers its own panic: the board must never take the process down.
+func (s *Service) degradeProbes(ctx context.Context, credential DegradeCredentialResponse, model string, samples []degrade.Challenge) ([]degrade.Sample, degradeUsage) {
+	gate := make(chan struct{}, degradeConcurrency)
+	collected := make([]degrade.Sample, len(samples))
+	probes := make([]degradeUsage, len(samples))
+	var mu sync.Mutex
+	var wait sync.WaitGroup
+	for index, challenge := range samples {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					degradeLog(fmt.Errorf("panic: %v", recovered), credential.CredentialID, "degrade probe panicked")
+					mu.Lock()
+					collected[index] = degrade.Sample{ExpectedCount: challenge.ExpectedCount, Error: "测试过程中断"}
+					mu.Unlock()
+				}
+			}()
+			gate <- struct{}{}
+			sample, usage, _ := s.degradeProbe(ctx, credential, model, challenge)
+			<-gate
+			mu.Lock()
+			collected[index] = sample
+			probes[index] = usage
+			mu.Unlock()
+		}()
+	}
+	wait.Wait()
+	var total degradeUsage
+	for _, usage := range probes {
+		total.input += usage.input
+		total.output += usage.output
+	}
+	return collected, total
+}
+
 // analyzeDegradeSamples scores the collected answers and then drops their
 // bodies: Analyze reconstructs each number sequence from Sample.Text, so the
 // text must survive until scoring finishes, while the board only keeps the
@@ -465,45 +504,211 @@ func analyzeDegradeSamples(collected []degrade.Sample) (degrade.Attribution, err
 	return attribution, err
 }
 
+// degradeInconclusiveReason explains why nothing could be scored. The aggregate
+// message has to separate an upstream that never answered from a model that
+// answered too briefly: only the second one is evidence about the model, and
+// reporting the first as "no numbers" hides the real fault.
+func degradeInconclusiveReason(collected []degrade.Sample, err error) string {
+	answered := 0
+	reasons := make([]string, 0, len(collected))
+	for _, sample := range collected {
+		if sample.Parsed > 0 {
+			answered++
+			continue
+		}
+		if sample.Error == "" {
+			continue
+		}
+		if !slices.Contains(reasons, sample.Error) {
+			reasons = append(reasons, sample.Error)
+		}
+	}
+	if answered > 0 {
+		return "模型回答的有效数字不足"
+	}
+	if len(reasons) > 0 {
+		return strings.Join(reasons, "；")
+	}
+	return err.Error()
+}
+
+// degradeProbe asks one challenge and retries only failures that happened
+// before the model produced an answer: a transport error, a cancellation, or an
+// upstream status that asks for another attempt. An answer that is complete but
+// too short is a verdict about the model, so it is never retried.
 func (s *Service) degradeProbe(ctx context.Context, credential DegradeCredentialResponse, model string, challenge degrade.Challenge) (degrade.Sample, degradeUsage, error) {
 	sample := degrade.Sample{ExpectedCount: challenge.ExpectedCount}
-	attemptCtx, cancel := context.WithTimeout(ctx, degradeAttemptTimeout)
-	defer cancel()
 	body, err := degrade.CodexTurn(model, challenge.Prompt, s.now())
 	if err != nil {
 		sample.Error = "无法构造测试请求"
 		return sample, degradeUsage{}, err
 	}
-	executed, err := s.executeDegrade(attemptCtx, credential, model, body)
-	sample.Attempts = 1
-	if err != nil {
-		sample.Error = clipDegradeError(err.Error())
-		return sample, degradeUsage{}, err
-	}
-	if executed.result.Error != nil || executed.result.StatusCode < 200 || executed.result.StatusCode >= 300 {
-		message := fmt.Sprintf("上游返回 HTTP %d", executed.result.StatusCode)
-		if executed.result.Error != nil && executed.result.Error.Summary != "" {
-			message = executed.result.Error.Summary
+	var usage degradeUsage
+	var lastErr error
+	for attempt := 0; attempt < degradeProbeAttempts; attempt++ {
+		if attempt > 0 {
+			// The reference probe backs off 2s then 4s before redispatching.
+			if err := s.degradeRetryWait(ctx, degradeRetryBaseWait<<(attempt-1)); err != nil {
+				break
+			}
 		}
+		attemptCtx, cancel := context.WithTimeout(ctx, degradeAttemptTimeout)
+		executed, err := s.executeDegrade(attemptCtx, credential, model, body)
+		cancel()
+		sample.Attempts++
+		if executed.result.Usage != nil {
+			usage.input += executed.result.Usage.Normalized.Tokens.UncachedInput + executed.result.Usage.Normalized.Tokens.CacheRead
+			usage.output += executed.result.Usage.Normalized.Tokens.Output
+		}
+		text := degradeProbeText(executed)
+		if text != "" {
+			// Keep whichever attempt produced the most usable answer: a retry
+			// can fail halfway and deliver less than the attempt before it.
+			clipped := degrade.ClipText(text)
+			if parsed := len(degrade.ParseNumbers(clipped)); parsed >= sample.Parsed {
+				sample.Text = clipped
+				sample.Parsed = parsed
+				sample.Accepted = parsed >= degrade.MinimumNumbers(challenge.ExpectedCount)
+			}
+		}
+		if sample.Accepted {
+			// The answer is already usable, so another attempt cannot improve the
+			// verdict. This also covers a stream that broke after the model had
+			// emitted the whole answer.
+			sample.Error = ""
+			return sample, usage, nil
+		}
+		if err == nil && executed.result.Error == nil &&
+			executed.result.StatusCode >= 200 && executed.result.StatusCode < 300 {
+			// The exchange itself succeeded, so it is not retried. Whether the
+			// answer is usable is decided below and reported on the sample.
+			lastErr = nil
+			sample.Error = ""
+			break
+		}
+		kind, message := degradeProbeFailure(executed, err)
 		sample.Error = clipDegradeError(message)
-		return sample, degradeUsage{}, fmt.Errorf("%s", message)
+		lastErr = fmt.Errorf("%s", message)
+		if !degradeRetryable(kind) {
+			break
+		}
 	}
-	text := executed.text
-	if text == "" {
-		text = degradeAnswerText(executed.result.Body)
+	if sample.Text == "" {
+		// Nothing usable arrived, so the caller must hear about the failure even
+		// if every attempt merely produced an empty answer.
+		if lastErr == nil {
+			lastErr = fmt.Errorf("%s", "上游没有返回内容")
+		}
+		if sample.Error == "" {
+			sample.Error = clipDegradeError(lastErr.Error())
+		}
+		return sample, usage, lastErr
 	}
-	sample.Text = degrade.ClipText(text)
-	sample.Parsed = len(degrade.ParseNumbers(sample.Text))
-	sample.Accepted = sample.Parsed >= max(80, int(float64(challenge.ExpectedCount)*0.55))
-	if !sample.Accepted {
-		sample.Error = "有效数字不足"
+	// The upstream answered at least partially. Score what arrived, so a
+	// truncated answer is reported as a short answer, not as a failed request.
+	sample.Error = "有效数字不足"
+	return sample, usage, nil
+}
+
+// degradeProbeText reads the answer from the stream, falling back to the body of
+// a non-streaming response.
+func degradeProbeText(executed degradeExecution) string {
+	if executed.text != "" {
+		return executed.text
 	}
-	var input, output int64
-	if executed.result.Usage != nil {
-		input = executed.result.Usage.Normalized.Tokens.UncachedInput + executed.result.Usage.Normalized.Tokens.CacheRead
-		output = executed.result.Usage.Normalized.Tokens.Output
+	return degradeAnswerText(executed.result.Body)
+}
+
+// degradeFailureLabels names the failures the board can explain itself. The
+// upstream summaries are English diagnostics meant for logs, so the board keeps
+// its own wording for the causes it understands and falls back to the summary
+// only when the cause is provider specific.
+var degradeFailureLabels = map[execution.ErrorKind]string{
+	execution.ErrorKindTimeout:   "上游响应超时",
+	execution.ErrorKindCanceled:  "测试已取消",
+	execution.ErrorKindTransport: "上游连接中断",
+}
+
+// degradeProbeFailure names what went wrong and decides whether another attempt
+// can help. Retrying is only useful when the failure happened before the model
+// answered: an expired attempt context, a cancelled request, a transport break,
+// a rate limit, or an upstream fault.
+func degradeProbeFailure(executed degradeExecution, err error) (execution.ErrorKind, string) {
+	result := executed.result
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return execution.ErrorKindTimeout, degradeFailureLabels[execution.ErrorKindTimeout]
+		}
+		if errors.Is(err, context.Canceled) {
+			return execution.ErrorKindCanceled, degradeFailureLabels[execution.ErrorKindCanceled]
+		}
+		return execution.ErrorKindInternal, clipDegradeError(err.Error())
 	}
-	return sample, degradeUsage{input: input, output: output}, nil
+	if result.Error == nil {
+		return degradeStatusFailure(result.StatusCode, "")
+	}
+	kind := result.Error.Kind
+	if label, known := degradeFailureLabels[kind]; known {
+		// A timeout or a dropped connection is the same fault whether or not the
+		// upstream had started answering, so it always gets the board's wording.
+		return kind, label
+	}
+	if kind == execution.ErrorKindHTTP || kind == execution.ErrorKindProvider {
+		// The status decides whether another attempt can help, so that a rejected
+		// request is not retried while an upstream fault is.
+		return degradeStatusFailure(result.StatusCode, result.Error.Summary)
+	}
+	message := result.Error.Summary
+	if message == "" {
+		message = fmt.Sprintf("上游返回 HTTP %d", result.StatusCode)
+	}
+	return kind, message
+}
+
+// degradeStatusFailure classifies a completed exchange from its status code,
+// preferring a provider supplied summary when there is one.
+func degradeStatusFailure(status int, summary string) (execution.ErrorKind, string) {
+	if status >= 200 && status < 300 {
+		return execution.ErrorKindInternal, summary
+	}
+	if status == 0 {
+		// No status at all means the request never reached the upstream, so
+		// saying "HTTP 0" would describe a fault the user cannot act on.
+		if summary != "" {
+			return execution.ErrorKindTransport, summary
+		}
+		return execution.ErrorKindTransport, degradeFailureLabels[execution.ErrorKindTransport]
+	}
+	message := fmt.Sprintf("上游返回 HTTP %d", status)
+	if summary != "" {
+		message = summary
+	}
+	if status >= 500 || status == http.StatusTooManyRequests {
+		// The reference probe retries these, plus a request that produced no
+		// status. Other 4xx responses describe the request itself.
+		return execution.ErrorKindHTTP, message
+	}
+	return execution.ErrorKindInvalidRequest, message
+}
+
+func degradeRetryable(kind execution.ErrorKind) bool {
+	switch kind {
+	case execution.ErrorKindTransport, execution.ErrorKindTimeout, execution.ErrorKindCanceled, execution.ErrorKindHTTP:
+		return true
+	default:
+		return false
+	}
+}
+
+func sleepDegradeRetry(ctx context.Context, wait time.Duration) error {
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 type degradeExecution struct {
@@ -708,11 +913,18 @@ type degradeOutputItem struct {
 	} `json:"content"`
 }
 
-// degradeStreamText reads the answer out of a Responses event stream. Codex can
-// finish with an empty output array and leave the text on the completed items.
+// degradeStreamText reads the answer out of a Responses event stream.
+//
+// Codex streams the answer as response.output_text.delta events and only closes
+// the message item when the turn ends. A stream cut mid-answer — upstream
+// timeout, reset connection, cancellation — therefore carries every number the
+// model already emitted in deltas and none in a finished item, so the deltas
+// must be accumulated as a fallback. A finished item still wins: it is the only
+// place a refusal or a tool call is distinguished from an answer.
 func degradeStreamText(events []byte) string {
 	var items []degradeOutputItem
 	var completed []byte
+	var deltas strings.Builder
 	for _, line := range bytes.Split(events, []byte("\n")) {
 		data, ok := bytes.CutPrefix(bytes.TrimSpace(line), []byte("data:"))
 		if !ok {
@@ -722,6 +934,7 @@ func degradeStreamText(events []byte) string {
 			Type     string          `json:"type"`
 			Response json.RawMessage `json:"response"`
 			Item     json.RawMessage `json:"item"`
+			Delta    string          `json:"delta"`
 		}
 		if json.Unmarshal(bytes.TrimSpace(data), &event) != nil {
 			continue
@@ -732,6 +945,10 @@ func degradeStreamText(events []byte) string {
 			if json.Unmarshal(event.Item, &item) == nil {
 				items = append(items, item)
 			}
+		case "response.output_text.delta":
+			// Reasoning summaries carry their own delta events; their numbers
+			// are not the model's answer and must not be scored.
+			deltas.WriteString(event.Delta)
 		case "response.completed", "response.incomplete", "response.failed":
 			completed = append([]byte(nil), event.Response...)
 		}
@@ -739,7 +956,10 @@ func degradeStreamText(events []byte) string {
 	if text := degradeOutputText(completed); text != "" {
 		return text
 	}
-	return degradeItemText(items)
+	if text := degradeItemText(items); text != "" {
+		return text
+	}
+	return deltas.String()
 }
 
 func degradeOutputText(body []byte) string {
