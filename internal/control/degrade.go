@@ -589,7 +589,7 @@ func (s *Service) appendDegradeResult(result degradeStoredResult) {
 	defer s.degradeWrite.Unlock()
 	stored, err := s.loadDegradeResults(ctx)
 	if err != nil {
-		logrus.WithError(err).WithField("credential_id", result.CredentialID).Error("degrade result was not loaded")
+		degradeLog(err, result.CredentialID, "degrade result was not loaded")
 		return
 	}
 	rows := append(stored[result.CredentialID], result)
@@ -598,8 +598,16 @@ func (s *Service) appendDegradeResult(result degradeStoredResult) {
 	}
 	stored[result.CredentialID] = rows
 	if err := s.saveDegradeResults(ctx, stored); err != nil {
-		logrus.WithError(err).WithField("credential_id", result.CredentialID).Error("degrade result was not saved")
+		degradeLog(err, result.CredentialID, "degrade result was not saved")
 	}
+}
+
+func degradeLog(err error, credentialID uint, message string) {
+	entry := logrus.WithField("credential_id", credentialID)
+	if err != nil {
+		entry = entry.WithField("error", err.Error())
+	}
+	entry.Error(message)
 }
 
 // RunDegradeInspection repeats the saved schedule until the process stops.
