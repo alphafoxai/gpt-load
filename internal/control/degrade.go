@@ -429,12 +429,9 @@ func (s *Service) runDegradeCredential(credential DegradeCredentialResponse, mod
 			failed++
 		}
 	}
-	for i := range collected {
-		collected[i].Text = ""
-	}
 	result.Samples = collected
 	result.InputTokens, result.OutputTokens = input, output
-	attribution, err := degrade.Analyze(collected)
+	attribution, err := analyzeDegradeSamples(collected)
 	if err != nil {
 		result.Status = "inconclusive"
 		result.Error = err.Error()
@@ -455,6 +452,18 @@ func (s *Service) runDegradeCredential(credential DegradeCredentialResponse, mod
 }
 
 type degradeUsage struct{ input, output int64 }
+
+// analyzeDegradeSamples scores the collected answers and then drops their
+// bodies: Analyze reconstructs each number sequence from Sample.Text, so the
+// text must survive until scoring finishes, while the board only keeps the
+// verdict and diagnostics.
+func analyzeDegradeSamples(collected []degrade.Sample) (degrade.Attribution, error) {
+	attribution, err := degrade.Analyze(collected)
+	for i := range collected {
+		collected[i].Text = ""
+	}
+	return attribution, err
+}
 
 func (s *Service) degradeProbe(ctx context.Context, credential DegradeCredentialResponse, model string, challenge degrade.Challenge) (degrade.Sample, degradeUsage, error) {
 	sample := degrade.Sample{ExpectedCount: challenge.ExpectedCount}

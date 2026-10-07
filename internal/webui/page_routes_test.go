@@ -117,6 +117,7 @@ func TestEmbeddedPageRouteManifestContainsCurrentPages(t *testing.T) {
 		"monitor-usage":     "/monitor/usage",
 		"monitor-logs":      "/monitor/logs",
 		"monitor-health":    "/monitor/health",
+		"monitor-degrade":   "/monitor/degrade",
 		"monitor-inspector": "/monitor/inspector",
 		"models":            "/models",
 		"proxies":           "/proxies",

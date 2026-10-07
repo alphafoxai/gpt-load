@@ -94,7 +94,10 @@ function schedule(value: unknown): DegradeSchedule {
   }
 }
 
-export async function getDegradeBoard(client: ApiClient, signal?: AbortSignal): Promise<DegradeBoard> {
+export async function getDegradeBoard(
+  client: ApiClient,
+  signal?: AbortSignal,
+): Promise<DegradeBoard> {
   const payload = record(await client.request('/api/degrade', { signal }))
   return {
     schedule: schedule(payload.schedule),

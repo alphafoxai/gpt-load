@@ -44,6 +44,11 @@ RUN GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
 FROM alpine:3.24.1@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b AS runtime
 
 WORKDIR /app
+# org.opencontainers.image.source 让 GHCR 把包关联回本仓库；包未关联时
+# Actions 的 GITHUB_TOKEN 无权推送，镜像发布会以 permission_denied 失败。
+LABEL org.opencontainers.image.source="https://github.com/alphafoxai/gpt-load"
+LABEL org.opencontainers.image.title="gpt-load"
+LABEL org.opencontainers.image.description="AlphaFox gpt-load 网关镜像（CPA auto-update.sh 跟随 :2）"
 RUN apk add --no-cache libcrypto3=3.5.9-r0 libssl3=3.5.9-r0 \
     && apk add --no-cache ca-certificates tzdata \
     && update-ca-certificates \
