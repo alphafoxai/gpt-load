@@ -51,7 +51,37 @@ func (executor *degradeScriptedExecutor) callCount() int {
 	return executor.calls
 }
 
-func (*degradeScriptedExecutor) Execute(
+// degradePanickingExecutor fails the first call by panicking and then behaves,
+// so a test can prove one broken challenge does not take the others down.
+type degradePanickingExecutor struct {
+	mu    sync.Mutex
+	calls int
+	inner degradeScriptedExecutor
+}
+
+func (executor *degradePanickingExecutor) Execute(
+	context.Context,
+	execution.AttemptSpec,
+) execution.AttemptResult {
+	panic("degrade probe must stream")
+}
+
+func (executor *degradePanickingExecutor) ExecuteStream(
+	ctx context.Context,
+	spec execution.AttemptSpec,
+	sink execution.StreamSink,
+) execution.StreamResult {
+	executor.mu.Lock()
+	index := executor.calls
+	executor.calls++
+	executor.mu.Unlock()
+	if index == 0 {
+		panic("scripted upstream panic")
+	}
+	return executor.inner.ExecuteStream(ctx, spec, sink)
+}
+
+func (executor *degradeScriptedExecutor) Execute(
 	context.Context,
 	execution.AttemptSpec,
 ) execution.AttemptResult {
@@ -335,6 +365,41 @@ func TestDegradeObservedStreamReadsTerminalUsage(t *testing.T) {
 	}
 	if observed.usage.output != 80 {
 		t.Fatalf("usage.output = %d, want 80", observed.usage.output)
+	}
+}
+
+// TestDegradeProbesSurviveAPanickingChallenge covers the crash the board was
+// reported for: a broken challenge must be recorded as a broken sample and must
+// not take the process, the run, or the other challenges down with it.
+func TestDegradeProbesSurviveAPanickingChallenge(t *testing.T) {
+	fixture, credential, model := newDegradeProbeFixture(t)
+	challenges := degrade.Challenges(time.Date(2026, time.October, 7, 12, 0, 0, 0, time.UTC))
+	answer := degradeTestAnswerText(challenges[0].ExpectedCount)
+	executor := &degradePanickingExecutor{inner: degradeScriptedExecutor{steps: []degradeScriptedStep{
+		{status: http.StatusOK, responded: true, answer: answer},
+	}}}
+	fixture.service.executor = executor
+
+	collected, _ := fixture.service.degradeProbes(t.Context(), credential, model, challenges)
+	if len(collected) != len(challenges) {
+		t.Fatalf("samples = %d, want every challenge to report", len(collected))
+	}
+	broken := 0
+	for _, sample := range collected {
+		if sample.Error == "测试过程中断" {
+			broken++
+		}
+	}
+	if broken != 1 {
+		t.Fatalf("broken samples = %d, want exactly the panicking one: %#v", broken, collected)
+	}
+	for index, sample := range collected {
+		if sample.Error == "测试过程中断" {
+			continue
+		}
+		if !sample.Accepted {
+			t.Fatalf("sample %d = %#v, want the healthy challenges to still answer", index, sample)
+		}
 	}
 }
 

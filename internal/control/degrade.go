@@ -37,10 +37,6 @@ const (
 	degradeDefaultInterval = 30 * time.Minute
 	degradeHistory         = 20
 	degradeAttemptTimeout  = 3 * time.Minute
-	// degradeConcurrency is the reference probe's challenge fan-out: the three
-	// challenges of one credential are asked in parallel, so a credential
-	// finishes in the time of one challenge rather than three.
-	degradeConcurrency = 3
 	// degradeProbeAttempts mirrors the reference probe: an upstream that fails
 	// before it answers is retried, an answer that is merely short is not.
 	degradeProbeAttempts = 3
@@ -455,10 +451,12 @@ func (s *Service) runDegradeCredential(credential DegradeCredentialResponse, mod
 type degradeUsage struct{ input, output int64 }
 
 // degradeProbes asks every challenge of one credential in parallel, matching the
-// reference probe's fan-out. Samples are returned in challenge order, and each
-// probe recovers its own panic: the board must never take the process down.
+// reference probe's fan-out, so a credential finishes in the time of one
+// challenge rather than three. Samples come back in challenge order.
+//
+// Each probe recovers its own panic: a degradation test must never take the
+// process down, and one broken challenge must not cost the other answers.
 func (s *Service) degradeProbes(ctx context.Context, credential DegradeCredentialResponse, model string, samples []degrade.Challenge) ([]degrade.Sample, degradeUsage) {
-	gate := make(chan struct{}, degradeConcurrency)
 	collected := make([]degrade.Sample, len(samples))
 	probes := make([]degradeUsage, len(samples))
 	var mu sync.Mutex
@@ -475,9 +473,7 @@ func (s *Service) degradeProbes(ctx context.Context, credential DegradeCredentia
 					mu.Unlock()
 				}
 			}()
-			gate <- struct{}{}
 			sample, usage, _ := s.degradeProbe(ctx, credential, model, challenge)
-			<-gate
 			mu.Lock()
 			collected[index] = sample
 			probes[index] = usage
@@ -935,27 +931,6 @@ type degradeOutputItem struct {
 // place a refusal or a tool call is distinguished from an answer.
 func degradeStreamText(events []byte) string {
 	return degradeObservedStreamOf(events).text
-}
-
-// degradeTerminalUsage reports the tokens the upstream billed for a stream. The
-// subscription executor publishes usage on the stream rather than on its result,
-// so the terminal event is the only place the board can read it from.
-func degradeTerminalUsage(events []byte) degradeUsage {
-	extractor := dialect.NewOpenAIResponses().NewUsageStreamExtractor()
-	for _, line := range bytes.Split(events, []byte("\n")) {
-		payload, ok := bytes.CutPrefix(bytes.TrimSpace(line), []byte("data:"))
-		if !ok {
-			continue
-		}
-		// Observe ignores anything that is not a usage carrying event.
-		_ = extractor.Observe(bytes.TrimSpace(payload))
-	}
-	result, ok := extractor.Finalize()
-	if !ok {
-		return degradeUsage{}
-	}
-	tokens := result.Tokens
-	return degradeUsage{input: tokens.UncachedInput + tokens.CacheRead, output: tokens.Output}
 }
 
 // degradeObservedStream is one parsed Responses event stream: the answer, and the
