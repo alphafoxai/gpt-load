@@ -118,6 +118,7 @@ export default {
     usage: { title: 'Usage' },
     logs: { title: 'Request logs' },
     health: { title: 'Runtime health' },
+    degrade: { title: 'Downgrade watch' },
     inspector: { title: 'Route inspection' },
     settings: { title: 'Global settings' },
     import: { title: 'Import credentials' },

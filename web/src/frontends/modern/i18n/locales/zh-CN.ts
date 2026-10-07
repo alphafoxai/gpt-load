@@ -114,6 +114,7 @@ export default {
     usage: { title: '用量统计' },
     logs: { title: '请求日志' },
     health: { title: '运行健康' },
+    degrade: { title: '降智观察' },
     inspector: { title: '路由检查' },
     settings: { title: '全局设置' },
     import: { title: '导入凭据' },
