@@ -117,6 +117,7 @@ export default {
     usage: { title: '使用量' },
     logs: { title: 'リクエストログ' },
     health: { title: '稼働状況' },
+    degrade: { title: '品質低下' },
     inspector: { title: 'ルート検査' },
     settings: { title: 'グローバル設定' },
     import: { title: '認証情報のインポート' },
