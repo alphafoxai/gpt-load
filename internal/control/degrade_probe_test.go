@@ -319,6 +319,25 @@ func TestDegradeProbeDoesNotRetryARejectedRequest(t *testing.T) {
 	}
 }
 
+// TestDegradeObservedStreamReadsTerminalUsage covers the token counts the board
+// shows. The subscription executor reports usage on the terminal stream event
+// and leaves its result's usage empty, so a board that only read the result
+// reported zero tokens for every run.
+func TestDegradeObservedStreamReadsTerminalUsage(t *testing.T) {
+	events := []byte(`data: {"type":"response.output_text.delta","delta":"12, 34, 56"}` + "\n" +
+		`data: {"type":"response.completed","response":{"output":[],"usage":{"input_tokens":120,"input_tokens_details":{"cached_tokens":40},"output_tokens":80,"total_tokens":200}}}` + "\n")
+	observed := degradeObservedStreamOf(events)
+	if observed.text != "12, 34, 56" {
+		t.Fatalf("text = %q, want the streamed numbers", observed.text)
+	}
+	if observed.usage.input != 120 {
+		t.Fatalf("usage.input = %d, want 120 (uncached input plus cache reads)", observed.usage.input)
+	}
+	if observed.usage.output != 80 {
+		t.Fatalf("usage.output = %d, want 80", observed.usage.output)
+	}
+}
+
 func TestDegradeInconclusiveReasonSeparatesUpstreamFailureFromShortAnswers(t *testing.T) {
 	upstream := []degrade.Sample{
 		{Error: "上游响应超时"}, {Error: "上游响应超时"}, {Error: "上游响应超时"},

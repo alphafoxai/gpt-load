@@ -21,6 +21,7 @@ import (
 
 	"gpt-load/internal/channel"
 	"gpt-load/internal/degrade"
+	"gpt-load/internal/dialect"
 	"gpt-load/internal/execution"
 	app_errors "gpt-load/internal/platform/errors"
 	"gpt-load/internal/protocol"
@@ -556,10 +557,16 @@ func (s *Service) degradeProbe(ctx context.Context, credential DegradeCredential
 		executed, err := s.executeDegrade(attemptCtx, credential, model, body)
 		cancel()
 		sample.Attempts++
+		attemptUsage := executed.usage
 		if executed.result.Usage != nil {
-			usage.input += executed.result.Usage.Normalized.Tokens.UncachedInput + executed.result.Usage.Normalized.Tokens.CacheRead
-			usage.output += executed.result.Usage.Normalized.Tokens.Output
+			tokens := executed.result.Usage.Normalized.Tokens
+			attemptUsage = degradeUsage{
+				input:  tokens.UncachedInput + tokens.CacheRead,
+				output: tokens.Output,
+			}
 		}
+		usage.input += attemptUsage.input
+		usage.output += attemptUsage.output
 		text := degradeProbeText(executed)
 		if text != "" {
 			// Keep whichever attempt produced the most usable answer: a retry
@@ -714,6 +721,10 @@ func sleepDegradeRetry(ctx context.Context, wait time.Duration) error {
 type degradeExecution struct {
 	result execution.AttemptResult
 	text   string
+	// usage is the tokens published on the stream, when the upstream reported
+	// them. The subscription executor leaves AttemptResult.Usage empty for a
+	// native Responses stream, so this is the only count available.
+	usage degradeUsage
 }
 
 func (s *Service) executeDegrade(ctx context.Context, credential DegradeCredentialResponse, model string, body []byte) (degradeExecution, error) {
@@ -774,7 +785,8 @@ func (s *Service) executeDegrade(ctx context.Context, credential DegradeCredenti
 		}
 		return nil
 	})
-	return degradeExecution{result: degradeStreamResult(result), text: degradeStreamText(events)}, nil
+	observed := degradeObservedStreamOf(events)
+	return degradeExecution{result: degradeStreamResult(result), text: observed.text, usage: observed.usage}, nil
 }
 
 func degradeStreamResult(result execution.StreamResult) execution.AttemptResult {
@@ -922,23 +934,61 @@ type degradeOutputItem struct {
 // must be accumulated as a fallback. A finished item still wins: it is the only
 // place a refusal or a tool call is distinguished from an answer.
 func degradeStreamText(events []byte) string {
-	var items []degradeOutputItem
-	var completed []byte
-	var deltas strings.Builder
+	return degradeObservedStreamOf(events).text
+}
+
+// degradeTerminalUsage reports the tokens the upstream billed for a stream. The
+// subscription executor publishes usage on the stream rather than on its result,
+// so the terminal event is the only place the board can read it from.
+func degradeTerminalUsage(events []byte) degradeUsage {
+	extractor := dialect.NewOpenAIResponses().NewUsageStreamExtractor()
 	for _, line := range bytes.Split(events, []byte("\n")) {
-		data, ok := bytes.CutPrefix(bytes.TrimSpace(line), []byte("data:"))
+		payload, ok := bytes.CutPrefix(bytes.TrimSpace(line), []byte("data:"))
 		if !ok {
 			continue
 		}
+		// Observe ignores anything that is not a usage carrying event.
+		_ = extractor.Observe(bytes.TrimSpace(payload))
+	}
+	result, ok := extractor.Finalize()
+	if !ok {
+		return degradeUsage{}
+	}
+	tokens := result.Tokens
+	return degradeUsage{input: tokens.UncachedInput + tokens.CacheRead, output: tokens.Output}
+}
+
+// degradeObservedStream is one parsed Responses event stream: the answer, and the
+// tokens the upstream reported for it.
+type degradeObservedStream struct {
+	text  string
+	usage degradeUsage
+}
+
+// degradeObservedStreamOf parses the stream once for both the answer and its usage.
+func degradeObservedStreamOf(events []byte) degradeObservedStream {
+	var items []degradeOutputItem
+	var completed []byte
+	var deltas strings.Builder
+	extractor := dialect.NewOpenAIResponses().NewUsageStreamExtractor()
+	for _, line := range bytes.Split(events, []byte("\n")) {
+		payload, ok := bytes.CutPrefix(bytes.TrimSpace(line), []byte("data:"))
+		if !ok {
+			continue
+		}
+		payload = bytes.TrimSpace(payload)
 		var event struct {
 			Type     string          `json:"type"`
 			Response json.RawMessage `json:"response"`
 			Item     json.RawMessage `json:"item"`
 			Delta    string          `json:"delta"`
 		}
-		if json.Unmarshal(bytes.TrimSpace(data), &event) != nil {
+		if json.Unmarshal(payload, &event) != nil {
 			continue
 		}
+		// Usage arrives on the terminal event, including when the turn was cut
+		// short, so every parsed event is offered to the extractor.
+		_ = extractor.Observe(payload)
 		switch event.Type {
 		case "response.output_item.done":
 			var item degradeOutputItem
@@ -953,13 +1003,21 @@ func degradeStreamText(events []byte) string {
 			completed = append([]byte(nil), event.Response...)
 		}
 	}
+	observed := degradeObservedStream{text: deltas.String()}
+	if result, ok := extractor.Finalize(); ok {
+		observed.usage = degradeUsage{
+			input:  result.Tokens.UncachedInput + result.Tokens.CacheRead,
+			output: result.Tokens.Output,
+		}
+	}
 	if text := degradeOutputText(completed); text != "" {
-		return text
+		observed.text = text
+		return observed
 	}
 	if text := degradeItemText(items); text != "" {
-		return text
+		observed.text = text
 	}
-	return deltas.String()
+	return observed
 }
 
 func degradeOutputText(body []byte) string {
