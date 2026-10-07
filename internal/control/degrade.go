@@ -13,6 +13,8 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
+	"github.com/sirupsen/logrus"
+
 	"gpt-load/internal/channel"
 	"gpt-load/internal/degrade"
 	"gpt-load/internal/execution"
@@ -389,6 +391,15 @@ func (s *Service) StartDegradeRun(ctx context.Context, request degradeRunRequest
 
 func (s *Service) runDegradeCredential(credential DegradeCredentialResponse, model string) {
 	defer func() {
+		if recovered := recover(); recovered != nil {
+			logrus.WithFields(logrus.Fields{"credential_id": credential.CredentialID, "panic": fmt.Sprint(recovered)}).
+				Error("degrade test panicked")
+			s.appendDegradeResult(degradeStoredResult{
+				ID: fmt.Sprintf("%d-panic", credential.CredentialID), CredentialID: credential.CredentialID,
+				GroupID: credential.GroupID, Model: model, Status: "failed",
+				Error: "测试过程中断", StartedAtMS: s.now().UnixMilli(), BankRevision: degrade.BankRevision(),
+			})
+		}
 		state := s.degrade()
 		state.mu.Lock()
 		delete(state.running, credential.CredentialID)
@@ -414,6 +425,9 @@ func (s *Service) runDegradeCredential(credential DegradeCredentialResponse, mod
 		if err != nil {
 			failed++
 		}
+	}
+	for i := range collected {
+		collected[i].Text = ""
 	}
 	result.Samples = collected
 	result.InputTokens, result.OutputTokens = input, output
@@ -575,6 +589,7 @@ func (s *Service) appendDegradeResult(result degradeStoredResult) {
 	defer s.degradeWrite.Unlock()
 	stored, err := s.loadDegradeResults(ctx)
 	if err != nil {
+		logrus.WithError(err).WithField("credential_id", result.CredentialID).Error("degrade result was not loaded")
 		return
 	}
 	rows := append(stored[result.CredentialID], result)
@@ -582,7 +597,9 @@ func (s *Service) appendDegradeResult(result degradeStoredResult) {
 		rows = rows[len(rows)-degradeHistory:]
 	}
 	stored[result.CredentialID] = rows
-	_ = s.saveDegradeResults(ctx, stored)
+	if err := s.saveDegradeResults(ctx, stored); err != nil {
+		logrus.WithError(err).WithField("credential_id", result.CredentialID).Error("degrade result was not saved")
+	}
 }
 
 // RunDegradeInspection repeats the saved schedule until the process stops.
