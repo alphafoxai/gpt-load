@@ -311,6 +311,9 @@ func (s *Server) HTTPModule() httproute.Module {
 				)),
 				s.handleDeleteGroup,
 			),
+			controlRoute("control.degrade.board", http.MethodGet, "/degrade", s.handleDegradeBoard),
+			controlRoute("control.degrade.run", http.MethodPost, "/degrade/runs", s.handleDegradeRun),
+			controlRoute("control.degrade.schedule", http.MethodPut, "/degrade/schedule", s.handleDegradeSchedule),
 			controlRoute(
 				"control.group-credentials.list",
 				http.MethodGet,

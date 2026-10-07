@@ -79,6 +79,9 @@ type Service struct {
 	observeSubscriptionAccount        func(context.Context, channel.ID, subscriptionruntime.Credential, subscriptionruntime.Target) (subscriptionruntime.Observation, error)
 	consumeSubscriptionResetCredit    func(context.Context, channel.ID, subscriptionruntime.Credential, subscriptionruntime.Target, string) (subscriptionruntime.ResetCreditResult, error)
 	oauthCallback                     *OAuthCallbackManager
+	degradeState                      *degradeState
+	degradeOnce                       sync.Once
+	degradeWrite                      sync.Mutex
 	now                               func() time.Time
 	publishSnapshot                   func(state.CompileInput) (*state.ConfigSnapshot, error)
 	reconcileRegistryGroup            func(uint, []state.CredentialEntry) (bool, error)

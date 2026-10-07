@@ -769,6 +769,46 @@ func (s *Server) handleRestoreGroupCredential(c *gin.Context) {
 	response.SuccessI18n(c, "common.success", result)
 }
 
+func (s *Server) handleDegradeBoard(c *gin.Context) {
+	result, err := s.service.DegradeBoard(c.Request.Context())
+	if err != nil {
+		writeServiceError(c, "degrade_board", err)
+		return
+	}
+	response.SuccessI18n(c, "common.success", result)
+}
+
+func (s *Server) handleDegradeRun(c *gin.Context) {
+	var request degradeRunRequest
+	if err := c.ShouldBindJSON(&request); err != nil && err.Error() != "EOF" {
+		writeServiceError(c, "degrade_run", app_errors.ErrBadRequest)
+		return
+	}
+	if len(request.CredentialIDs) == 0 {
+		request.All = true
+	}
+	started, err := s.service.StartDegradeRun(c.Request.Context(), request)
+	if err != nil {
+		writeServiceError(c, "degrade_run", err)
+		return
+	}
+	response.SuccessI18n(c, "common.success", gin.H{"started": started})
+}
+
+func (s *Server) handleDegradeSchedule(c *gin.Context) {
+	var request degradeScheduleRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		writeServiceError(c, "degrade_schedule", app_errors.ErrBadRequest)
+		return
+	}
+	schedule, err := s.service.UpdateDegradeSchedule(c.Request.Context(), request)
+	if err != nil {
+		writeServiceError(c, "degrade_schedule", err)
+		return
+	}
+	response.SuccessI18n(c, "common.success", schedule)
+}
+
 func (s *Server) handleTestGroupCredential(c *gin.Context) {
 	groupID, ok := groupID(c, "test_group_credential")
 	if !ok {

@@ -36,7 +36,9 @@ export function createModernRouter(
                         ? () => import('./features/usage/UsageView.vue')
                         : item.id === 'health'
                           ? () => import('./features/health/HealthView.vue')
-                          : () => import('./features/models/ModelsView.vue'),
+                          : item.id === 'degrade'
+                            ? () => import('./features/degrade/DegradeView.vue')
+                            : () => import('./features/models/ModelsView.vue'),
         meta: { requiresAuth: true, adminOnly: item.adminOnly },
       })),
       {

@@ -1,5 +1,6 @@
 import {
   Activity,
+  Candy,
   Network,
   Boxes,
   ChartNoAxesCombined,
@@ -76,6 +77,14 @@ export const navigationItems = [
     path: pagePath('monitor-health'),
     section: 'observe',
     icon: Activity,
+    adminOnly: true,
+  },
+  {
+    id: 'degrade',
+    name: 'modern-degrade',
+    path: pagePath('monitor-degrade'),
+    section: 'observe',
+    icon: Candy,
     adminOnly: true,
   },
   {

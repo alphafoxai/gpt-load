@@ -160,6 +160,17 @@ func (runtime *Runtime) Run(ctx context.Context) {
 			runtime.oauthCallback.Run(ctx)
 		}()
 	}
+	if runtime.operationRecovery != nil {
+		if inspection, ok := runtime.operationRecovery.(interface {
+			RunDegradeInspection(context.Context)
+		}); ok {
+			wait.Add(1)
+			go func() {
+				defer wait.Done()
+				inspection.RunDegradeInspection(ctx)
+			}()
+		}
+	}
 	wait.Wait()
 }
 
