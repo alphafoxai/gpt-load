@@ -60,7 +60,7 @@ function verdict(row: DegradeCredential) {
       label: `${latest.prediction} ${(latest.probability * 100).toFixed(1)}%`,
       detail: '与测试模型一致',
     }
-  return { tone: 'unknown', label: '没有结论', detail: latest.error }
+  return { tone: 'unknown', label: latest.error || '没有结论' }
 }
 
 function when(value: number) {
