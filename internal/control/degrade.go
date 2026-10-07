@@ -1,6 +1,7 @@
 package control
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -459,10 +460,7 @@ func (s *Service) degradeProbe(ctx context.Context, credential DegradeCredential
 	sample := degrade.Sample{ExpectedCount: challenge.ExpectedCount}
 	attemptCtx, cancel := context.WithTimeout(ctx, degradeAttemptTimeout)
 	defer cancel()
-	body, err := json.Marshal(map[string]any{
-		"model": model,
-		"input": []map[string]string{{"role": "user", "content": challenge.Prompt}},
-	})
+	body, err := degrade.CodexTurn(model, challenge.Prompt, s.now())
 	if err != nil {
 		sample.Error = "无法构造测试请求"
 		return sample, degradeUsage{}, err
@@ -481,7 +479,10 @@ func (s *Service) degradeProbe(ctx context.Context, credential DegradeCredential
 		sample.Error = clipDegradeError(message)
 		return sample, degradeUsage{}, fmt.Errorf("%s", message)
 	}
-	text := degradeAnswerText(executed.result.Body)
+	text := executed.text
+	if text == "" {
+		text = degradeAnswerText(executed.result.Body)
+	}
 	sample.Text = degrade.ClipText(text)
 	sample.Parsed = len(degrade.ParseNumbers(sample.Text))
 	sample.Accepted = sample.Parsed >= max(80, int(float64(challenge.ExpectedCount)*0.55))
@@ -498,6 +499,7 @@ func (s *Service) degradeProbe(ctx context.Context, credential DegradeCredential
 
 type degradeExecution struct {
 	result execution.AttemptResult
+	text   string
 }
 
 func (s *Service) executeDegrade(ctx context.Context, credential DegradeCredentialResponse, model string, body []byte) (degradeExecution, error) {
@@ -551,7 +553,23 @@ func (s *Service) executeDegrade(ctx context.Context, credential DegradeCredenti
 	if err := spec.Validate(); err != nil {
 		return degradeExecution{}, err
 	}
-	return degradeExecution{result: s.executor.Execute(ctx, spec)}, nil
+	var events []byte
+	result := s.executor.ExecuteStream(ctx, spec, func(event execution.StreamEvent) error {
+		if event.Kind == execution.StreamEventData {
+			events = append(events, event.Data...)
+		}
+		return nil
+	})
+	return degradeExecution{result: degradeStreamResult(result), text: degradeStreamText(events)}, nil
+}
+
+func degradeStreamResult(result execution.StreamResult) execution.AttemptResult {
+	return execution.AttemptResult{
+		DispatchState: result.DispatchState, ResponseStarted: result.ResponseStarted,
+		UpstreamProtocol: result.UpstreamProtocol, AppliedReasoning: result.AppliedReasoning,
+		StatusCode: result.StatusCode, Header: result.Header, Model: result.Model,
+		UpstreamRequestID: result.UpstreamRequestID, Usage: result.Usage, Error: result.Error,
+	}
 }
 
 func degradeAnswerText(body []byte) string {
@@ -671,4 +689,71 @@ func (s *Service) degradeTick(ctx context.Context) {
 		return
 	}
 	_, _ = s.StartDegradeRun(ctx, degradeRunRequest{Model: schedule.Model, All: true})
+}
+
+type degradeOutputItem struct {
+	Type    string `json:"type"`
+	Content []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	} `json:"content"`
+}
+
+// degradeStreamText reads the answer out of a Responses event stream. Codex can
+// finish with an empty output array and leave the text on the completed items.
+func degradeStreamText(events []byte) string {
+	var items []degradeOutputItem
+	var completed []byte
+	for _, line := range bytes.Split(events, []byte("\n")) {
+		data, ok := bytes.CutPrefix(bytes.TrimSpace(line), []byte("data:"))
+		if !ok {
+			continue
+		}
+		var event struct {
+			Type     string          `json:"type"`
+			Response json.RawMessage `json:"response"`
+			Item     json.RawMessage `json:"item"`
+		}
+		if json.Unmarshal(bytes.TrimSpace(data), &event) != nil {
+			continue
+		}
+		switch event.Type {
+		case "response.output_item.done":
+			var item degradeOutputItem
+			if json.Unmarshal(event.Item, &item) == nil {
+				items = append(items, item)
+			}
+		case "response.completed", "response.incomplete", "response.failed":
+			completed = append([]byte(nil), event.Response...)
+		}
+	}
+	if text := degradeOutputText(completed); text != "" {
+		return text
+	}
+	return degradeItemText(items)
+}
+
+func degradeOutputText(body []byte) string {
+	var payload struct {
+		Output []degradeOutputItem `json:"output"`
+	}
+	if json.Unmarshal(body, &payload) != nil || len(payload.Output) == 0 {
+		return ""
+	}
+	return degradeItemText(payload.Output)
+}
+
+func degradeItemText(items []degradeOutputItem) string {
+	var text strings.Builder
+	for _, item := range items {
+		if item.Type != "" && item.Type != "message" {
+			continue
+		}
+		for _, part := range item.Content {
+			if part.Type == "" || part.Type == "output_text" || part.Type == "text" {
+				text.WriteString(part.Text)
+			}
+		}
+	}
+	return text.String()
 }
