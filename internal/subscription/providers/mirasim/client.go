@@ -74,6 +74,7 @@ type Client struct {
 	deviceID              string
 	sessionID             string
 	continuityKey         string
+	relayAgentName        string
 	ticket                string
 	ticketExpiresAt       time.Time
 	ticketRetryAt         time.Time
@@ -101,6 +102,18 @@ func (c *Client) BindContinuity(key string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.continuityKey = safeMetadata(key)
+}
+
+// BindRelayAgent names the Mirasim agent this call belongs to. The signature
+// covers that header, so it has to be bound before the request is signed.
+// An empty name keeps the path default: codex for Responses, claude otherwise.
+func (c *Client) BindRelayAgent(agent string) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.relayAgentName = safeMetadata(agent)
 }
 
 func (c *Client) Storage() Storage {

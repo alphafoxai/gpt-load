@@ -43,6 +43,7 @@ func NewExecutor() *Executor { return &Executor{} }
 func clientFor(credential Storage, request ExecuteRequest) *Client {
 	client := NewClient(credential)
 	client.BindContinuity(request.ContinuityKey)
+	client.BindRelayAgent(relayModelFamily(normalizeModel(request.Model)))
 	return client
 }
 
@@ -111,7 +112,7 @@ func (e *Executor) CountTokens(ctx context.Context, credential Storage, request 
 	if err != nil {
 		return ExecuteResponse{}, err
 	}
-	body, err = normalizeBody(body, model, false, sdktranslator.FormatClaude)
+	body, err = normalizeBody(body, model, false, sdktranslator.FormatClaude, request.Payload)
 	if err != nil {
 		return ExecuteResponse{}, err
 	}
@@ -156,7 +157,7 @@ func buildProviderRequest(request ExecuteRequest, stream bool) ([]byte, provider
 	if err != nil {
 		return nil, providerRoute{}, err
 	}
-	body, err = normalizeBody(body, model, stream, wire)
+	body, err = normalizeBody(body, model, stream, wire, request.Payload)
 	if err != nil {
 		return nil, providerRoute{}, err
 	}
@@ -168,13 +169,33 @@ func buildProviderRequest(request ExecuteRequest, stream bool) ([]byte, provider
 }
 
 func selectWireFormat(model string) sdktranslator.Format {
-	switch {
-	case strings.HasPrefix(strings.ToLower(model), "gpt-"):
+	switch relayModelFamily(model) {
+	case "gpt":
 		return sdktranslator.FormatCodex
-	case strings.HasPrefix(strings.ToLower(model), "claude-"):
+	case "claude", "dsh", "zcode":
 		return sdktranslator.FormatClaude
 	default:
 		return sdktranslator.FormatCodex
+	}
+}
+
+// relayModelFamily is the Mirasim agent that serves a model. Only gpt- names
+// use the Codex Responses wire. Claude, DeepSeek Flash (v4.1-flash) and
+// GLM-5.3-Flash use the Anthropic Messages wire of their own agents.
+func relayModelFamily(model string) string {
+	switch strings.ToLower(strings.TrimSpace(model)) {
+	case "deepseek-flash":
+		return "dsh"
+	case "glm-5.3-flash":
+		return "zcode"
+	}
+	switch {
+	case strings.HasPrefix(strings.ToLower(model), "gpt-"):
+		return "gpt"
+	case strings.HasPrefix(strings.ToLower(model), "claude-"):
+		return "claude"
+	default:
+		return ""
 	}
 }
 
@@ -246,7 +267,7 @@ func translateStream(ctx context.Context, from, to sdktranslator.Format, model s
 	return reader
 }
 
-func normalizeBody(body []byte, model string, stream bool, wire sdktranslator.Format) ([]byte, error) {
+func normalizeBody(body []byte, model string, stream bool, wire sdktranslator.Format, original []byte) ([]byte, error) {
 	var payload map[string]any
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return nil, fmt.Errorf("decode translated Mirasim request: %w", err)
@@ -257,6 +278,7 @@ func normalizeBody(body []byte, model string, stream bool, wire sdktranslator.Fo
 		if strings.HasPrefix(strings.ToLower(model), "claude-") {
 			ensureClaudeBillingHeader(payload)
 		}
+		applyBuiltinEffort(payload, model, original)
 	} else {
 		payload["stream"] = true
 	}
@@ -265,6 +287,64 @@ func normalizeBody(body []byte, model string, stream bool, wire sdktranslator.Fo
 		return nil, fmt.Errorf("encode translated Mirasim request: %w", err)
 	}
 	return updated, nil
+}
+
+// applyBuiltinEffort restores low, high, or max for the Mirasim models whose
+// thinking the translator strips because it does not recognize them. The
+// Anthropic wire carries the level as output_config.effort beside adaptive
+// thinking. Other levels, including off, stay untouched.
+func applyBuiltinEffort(payload map[string]any, model string, original []byte) {
+	switch relayModelFamily(model) {
+	case "dsh", "zcode":
+	default:
+		return
+	}
+	effort := builtinEffort(original)
+	if effort == "" {
+		return
+	}
+	thinking, _ := payload["thinking"].(map[string]any)
+	if thinking == nil {
+		thinking = map[string]any{}
+	}
+	thinking["type"] = "adaptive"
+	payload["thinking"] = thinking
+	output, _ := payload["output_config"].(map[string]any)
+	if output == nil {
+		output = map[string]any{}
+	}
+	output["effort"] = effort
+	payload["output_config"] = output
+}
+
+func builtinEffort(body []byte) string {
+	for _, candidate := range []string{
+		jsonStringAt(body, "output_config", "effort"),
+		jsonStringAt(body, "reasoning", "effort"),
+		jsonStringAt(body, "reasoning_effort"),
+	} {
+		switch strings.ToLower(strings.TrimSpace(candidate)) {
+		case "low", "high", "max":
+			return strings.ToLower(strings.TrimSpace(candidate))
+		}
+	}
+	return ""
+}
+
+func jsonStringAt(body []byte, path ...string) string {
+	var value any
+	if json.Unmarshal(body, &value) != nil {
+		return ""
+	}
+	for _, key := range path {
+		object, ok := value.(map[string]any)
+		if !ok {
+			return ""
+		}
+		value = object[key]
+	}
+	text, _ := value.(string)
+	return text
 }
 
 // claudeBillingHeaderText is the marker Mirasim's Claude Messages route requires

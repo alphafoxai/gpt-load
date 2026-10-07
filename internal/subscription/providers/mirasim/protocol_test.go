@@ -108,6 +108,23 @@ func TestRelayAgentRecognizesCodexRoutes(t *testing.T) {
 	if got := relayAgent("/v1/messages"); got != "claude" {
 		t.Fatalf("relayAgent(/v1/messages) = %q, want claude", got)
 	}
+	client := NewClient(Storage{})
+	client.BindRelayAgent("dsh")
+	if got := client.relayAgentFor("/v1/messages"); got != "dsh" {
+		t.Fatalf("bound relay agent = %q, want dsh", got)
+	}
+	if got := relayModelFamily("deepseek-flash"); got != "dsh" {
+		t.Fatalf("deepseek-flash family = %q", got)
+	}
+	if got := relayModelFamily("glm-5.3-flash"); got != "zcode" {
+		t.Fatalf("glm-5.3-flash family = %q", got)
+	}
+	if got := relayModelFamily("claude-opus-5-5"); got != "claude" {
+		t.Fatalf("claude family = %q", got)
+	}
+	if got := relayModelFamily("gpt-6-astra"); got != "gpt" {
+		t.Fatalf("gpt family = %q", got)
+	}
 }
 
 func TestRelaySealPublicKeyDefaultsAndFailsClosed(t *testing.T) {

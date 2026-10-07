@@ -194,7 +194,7 @@ func (c *Client) relayMetadataLocked(requestPath string) (map[string]string, err
 	}
 	metadata := map[string]string{
 		headerMirasimSession: session,
-		headerMirasimAgent:   relayAgent(requestPath),
+		headerMirasimAgent:   c.relayAgentFor(requestPath),
 		headerMirasimCall:    callID,
 	}
 	// Only a sub-account the token itself names belongs in this header. The
@@ -210,6 +210,15 @@ func (c *Client) relayMetadataLocked(requestPath string) (map[string]string, err
 		metadata["x-mirasim-collect"] = "off"
 	}
 	return metadata, nil
+}
+
+func (c *Client) relayAgentFor(requestPath string) string {
+	if c != nil {
+		if agent := strings.TrimSpace(c.relayAgentName); agent != "" {
+			return agent
+		}
+	}
+	return relayAgent(requestPath)
 }
 
 func relayAgent(requestPath string) string {

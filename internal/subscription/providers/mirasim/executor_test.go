@@ -24,6 +24,52 @@ func TestBuildProviderRequestSelectsModelWire(t *testing.T) {
 	if strings.Contains(string(gptBody), "x-anthropic-billing-header") {
 		t.Fatalf("gpt body gained a Claude billing header: %s", gptBody)
 	}
+	for _, model := range []string{"deepseek-flash", "glm-5.3-flash"} {
+		body, route, err := buildProviderRequest(ExecuteRequest{
+			Model: model, Format: "claude",
+			Payload: []byte(`{"model":"` + model + `","max_tokens":16,"messages":[{"role":"user","content":"hi"}]}`),
+		}, false)
+		if err != nil || route.Path != "/v1/messages" {
+			t.Fatalf("%s route = %#v err=%v", model, route, err)
+		}
+		if strings.Contains(string(body), "x-anthropic-billing-header") {
+			t.Fatalf("%s body gained a Claude billing header: %s", model, body)
+		}
+		if !strings.Contains(string(body), `"stream":false`) {
+			t.Fatalf("%s body = %s", model, body)
+		}
+	}
+}
+
+func TestBuildProviderRequestRestoresBuiltinEffort(t *testing.T) {
+	for _, model := range []string{"deepseek-flash", "glm-5.3-flash"} {
+		for _, effort := range []string{"low", "high", "max"} {
+			body, route, err := buildProviderRequest(ExecuteRequest{
+				Model: model, Format: "openai",
+				Payload: []byte(`{"model":"` + model + `","reasoning_effort":"` + effort + `","messages":[{"role":"user","content":"hi"}]}`),
+			}, false)
+			if err != nil || route.Path != "/v1/messages" {
+				t.Fatalf("%s %s route = %#v err=%v", model, effort, route, err)
+			}
+			if !strings.Contains(string(body), `"type":"adaptive"`) || !strings.Contains(string(body), `"effort":"`+effort+`"`) {
+				t.Fatalf("%s %s body = %s", model, effort, body)
+			}
+		}
+		body, _, err := buildProviderRequest(ExecuteRequest{
+			Model: model, Format: "claude",
+			Payload: []byte(`{"model":"` + model + `","thinking":{"type":"adaptive"},"output_config":{"effort":"HIGH"},"max_tokens":16,"messages":[{"role":"user","content":"hi"}]}`),
+		}, false)
+		if err != nil || !strings.Contains(string(body), `"effort":"high"`) {
+			t.Fatalf("%s native effort body = %s err=%v", model, body, err)
+		}
+	}
+	body, _, err := buildProviderRequest(ExecuteRequest{
+		Model: "claude-opus-5-5", Format: "claude",
+		Payload: []byte(`{"model":"claude-opus-5-5","reasoning_effort":"max","messages":[{"role":"user","content":"hi"}]}`),
+	}, false)
+	if err != nil || strings.Contains(string(body), `"effort":"max"`) {
+		t.Fatalf("claude body should not gain a builtin effort: %s err=%v", body, err)
+	}
 }
 
 func TestBuildProviderRequestSuppliesClaudeBillingHeaderWhenMissing(t *testing.T) {
