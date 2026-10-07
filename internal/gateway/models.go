@@ -30,10 +30,15 @@ type openAIModelList struct {
 }
 
 type openAIModel struct {
-	ID      string `json:"id"`
-	Object  string `json:"object"`
-	Created int64  `json:"created"`
-	OwnedBy string `json:"owned_by"`
+	ID                       string         `json:"id"`
+	Object                   string         `json:"object"`
+	Created                  int64          `json:"created"`
+	OwnedBy                  string         `json:"owned_by"`
+	SupportedReasoningLevels []effortLevel  `json:"supported_reasoning_levels,omitempty"`
+}
+
+type effortLevel struct {
+	Effort string `json:"effort"`
 }
 
 type anthropicModelList struct {
@@ -246,10 +251,17 @@ func marshalModelListItem(value protocol.Protocol, id string) ([]byte, error) {
 	case protocol.Gemini:
 		return json.Marshal(geminiModel{Name: "models/" + id})
 	default:
-		return json.Marshal(openAIModel{
-			ID: id, Object: "model", Created: modelPlaceholderUnix, OwnedBy: "gpt-load",
-		})
+		return json.Marshal(openAIModelFor(id))
 	}
+}
+
+func openAIModelFor(id string) openAIModel {
+	model := openAIModel{ID: id, Object: "model", Created: modelPlaceholderUnix, OwnedBy: "gpt-load"}
+	switch id {
+	case "deepseek-flash", "glm-5.3-flash", "mira/v4.1-flash", "mira/glm-5.3-flash":
+		model.SupportedReasoningLevels = []effortLevel{{Effort: "low"}, {Effort: "high"}, {Effort: "max"}}
+	}
+	return model
 }
 
 func marshalModelList(value protocol.Protocol, ids []string) ([]byte, error) {
@@ -277,9 +289,7 @@ func marshalModelList(value protocol.Protocol, ids []string) ([]byte, error) {
 	default:
 		data := make([]openAIModel, 0, len(ids))
 		for _, id := range ids {
-			data = append(data, openAIModel{
-				ID: id, Object: "model", Created: modelPlaceholderUnix, OwnedBy: "gpt-load",
-			})
+			data = append(data, openAIModelFor(id))
 		}
 		return json.Marshal(openAIModelList{Object: "list", Data: data})
 	}

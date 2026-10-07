@@ -251,6 +251,10 @@ func TestMarshalModelList(t *testing.T) {
 			expected: `{"object":"list","data":[{"id":"alpha","object":"model","created":1735689600,"owned_by":"gpt-load"},{"id":"zeta","object":"model","created":1735689600,"owned_by":"gpt-load"}]}`,
 		},
 		{
+			name: "OpenAI builtin flash efforts", value: protocol.OpenAICompletions, ids: []string{"mira/v4.1-flash"},
+			expected: `{"object":"list","data":[{"id":"mira/v4.1-flash","object":"model","created":1735689600,"owned_by":"gpt-load","supported_reasoning_levels":[{"effort":"low"},{"effort":"high"},{"effort":"max"}]}]}`,
+		},
+		{
 			name: "Anthropic", value: protocol.Anthropic, ids: []string{"alpha", "zeta"},
 			expected: `{"data":[{"type":"model","id":"alpha","display_name":"alpha","created_at":"2025-01-01T00:00:00Z"},{"type":"model","id":"zeta","display_name":"zeta","created_at":"2025-01-01T00:00:00Z"}],"has_more":false,"first_id":"alpha","last_id":"zeta"}`,
 		},
