@@ -30,11 +30,11 @@ type openAIModelList struct {
 }
 
 type openAIModel struct {
-	ID                       string         `json:"id"`
-	Object                   string         `json:"object"`
-	Created                  int64          `json:"created"`
-	OwnedBy                  string         `json:"owned_by"`
-	SupportedReasoningLevels []effortLevel  `json:"supported_reasoning_levels,omitempty"`
+	ID                       string        `json:"id"`
+	Object                   string        `json:"object"`
+	Created                  int64         `json:"created"`
+	OwnedBy                  string        `json:"owned_by"`
+	SupportedReasoningLevels []effortLevel `json:"supported_reasoning_levels,omitempty"`
 }
 
 type effortLevel struct {
