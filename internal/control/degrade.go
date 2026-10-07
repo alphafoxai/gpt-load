@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -605,10 +606,28 @@ func (s *Service) appendDegradeResult(result degradeStoredResult) {
 
 func degradeLog(err error, credentialID uint, message string) {
 	entry := logrus.WithField("credential_id", credentialID)
-	if err != nil {
-		entry = entry.WithField("error", err.Error())
+	// A database helper can hand back a typed nil (*APIError)(nil). Comparing
+	// that with != nil is true, and calling Error on it panics. The panic
+	// handler logs through here too, so that second panic used to take the
+	// whole process down.
+	if text, ok := degradeErrorText(err); ok {
+		entry = entry.WithField("error", text)
 	}
 	entry.Error(message)
+}
+
+func degradeErrorText(err error) (string, bool) {
+	if err == nil {
+		return "", false
+	}
+	value := reflect.ValueOf(err)
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		if value.IsNil() {
+			return "", false
+		}
+	}
+	return err.Error(), true
 }
 
 // RunDegradeInspection repeats the saved schedule until the process stops.
