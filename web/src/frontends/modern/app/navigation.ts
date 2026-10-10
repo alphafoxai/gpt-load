@@ -88,6 +88,14 @@ export const navigationItems = [
     adminOnly: true,
   },
   {
+    id: 'mirasimStatus',
+    name: 'modern-mirasim-status',
+    path: pagePath('mirasim-status'),
+    section: 'observe',
+    icon: Activity,
+    adminOnly: true,
+  },
+  {
     id: 'settings',
     name: 'modern-settings',
     path: pagePath('settings'),

@@ -23,6 +23,7 @@ import (
 	"gpt-load/internal/gateway"
 	"gpt-load/internal/health"
 	"gpt-load/internal/httplifecycle"
+	"gpt-load/internal/mirasimstatus"
 	"gpt-load/internal/outboundproxy"
 	"gpt-load/internal/platform/config"
 	"gpt-load/internal/platform/encryption"
@@ -140,6 +141,7 @@ func BuildContainer() (*dig.Container, error) {
 		newSystemOutboundProxyProvider,
 		releasecheck.NewClient,
 		releasecheck.NewChecker,
+		mirasimstatus.NewWithProxy,
 		func(
 			manager *httpclient.HTTPClientManager,
 			proxyProvider httpclient.OutboundProxyProvider,
@@ -221,8 +223,11 @@ func BuildContainer() (*dig.Container, error) {
 			cfg *config.Config,
 			service *control.Service,
 			checker *releasecheck.Checker,
+			mirasimChecker *mirasimstatus.Checker,
 		) *control.Server {
-			return control.NewServerWithReleaseUpdateChecker(cfg, service, checker)
+			server := control.NewServerWithReleaseUpdateChecker(cfg, service, checker)
+			server.SetMirasimStatusReader(mirasimChecker)
+			return server
 		},
 		newHTTPRegistry,
 		func(

@@ -1,3 +1,4 @@
+import { zhCN as mirasimStatus } from '@shared/mirasim-status/messages'
 import { zhCN as proxies } from '@shared/proxies/messages'
 import { zhCN as concurrency } from './concurrency'
 import { zhCN as requestRedaction } from './request-redaction'
@@ -24,6 +25,7 @@ import { zhCN as autoModel } from './auto-model'
 import { zhCN as subscriptions } from './subscriptions'
 
 export default {
+  mirasimStatus,
   proxies,
   concurrency,
   requestRedaction,
@@ -105,6 +107,7 @@ export default {
     },
   },
   pages: {
+    mirasimStatus: { title: mirasimStatus.title },
     proxies: { title: proxies.title },
     home: { title: '总览' },
     groups: { title: '分组' },
