@@ -23,6 +23,15 @@ function pageRoute(
 }
 
 const routes: RouteRecordRaw[] = [
+  pageRoute(pageRouteNames.mirasimStatus, {
+    component: lazyView(() => import('@shared/mirasim-status/MirasimStatusView.vue')),
+    meta: {
+      titleKey: 'mirasimStatus.title',
+      requiresAuth: true,
+      adminOnly: true,
+      primaryNav: 'mirasim-status',
+    },
+  }),
   pageRoute(pageRouteNames.proxies, {
     component: lazyView(() => import('@/features/proxies/ProxiesView.vue')),
     meta: { titleKey: 'proxies.title', requiresAuth: true, adminOnly: true, primaryNav: 'proxies' },

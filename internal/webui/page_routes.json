@@ -8,6 +8,7 @@
     { "name": "group-detail", "path": "/groups/:id" },
     { "name": "access-keys", "path": "/access-keys" },
     { "name": "monitor", "path": "/monitor" },
+    { "name": "mirasim-status", "path": "/mirasim-status" },
     { "name": "models", "path": "/models" },
     { "name": "proxies", "path": "/proxies" },
     { "name": "settings", "path": "/settings" }

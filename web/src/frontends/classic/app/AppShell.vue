@@ -51,6 +51,11 @@ const navigation = computed(() => {
       label: t('shell.accessKeys'),
     },
     shared[2]!,
+    {
+      key: 'mirasim-status',
+      to: { name: pageRouteNames.mirasimStatus },
+      label: t('mirasimStatus.title'),
+    },
     { key: 'settings', to: settingsLocation(), label: t('shell.settings') },
     { key: 'proxies', to: { name: pageRouteNames.proxies }, label: t('proxies.title') },
   ]

@@ -233,6 +233,7 @@ func (a *Adapter) Execute(ctx context.Context, spec execution.AttemptSpec) (resu
 		}
 		if result.ResponseStarted {
 			result.Header = subscriptionResponseHeaders(response.Headers, "application/json")
+			result.UpstreamRequestID = upstreamRequestID(result.Header)
 			if spec.Operation == execution.OperationWebSearch {
 				result.Body = append([]byte(nil), response.Payload...)
 			}
@@ -376,6 +377,7 @@ func (a *Adapter) ExecuteStream(
 		result := unaryExecutionError(streamCtx, provider, err, credential)
 		if response != nil && result.ResponseStarted {
 			result.Header = subscriptionResponseHeaders(response.Headers, "application/json")
+			result.UpstreamRequestID = upstreamRequestID(result.Header)
 		}
 		var applied *reasoning.Config
 		if response != nil {

@@ -1,3 +1,4 @@
+import { enUS as mirasimStatus } from '@shared/mirasim-status/messages'
 import { enUS as proxies } from '@shared/proxies/messages'
 import { enUS as concurrency } from './concurrency'
 import { enUS as requestRedaction } from './request-redaction'
@@ -24,6 +25,7 @@ import { enUS as autoModel } from './auto-model'
 import { enUS as subscriptions } from './subscriptions'
 
 export default {
+  mirasimStatus,
   proxies,
   concurrency,
   requestRedaction,
@@ -109,6 +111,7 @@ export default {
     },
   },
   pages: {
+    mirasimStatus: { title: mirasimStatus.title },
     proxies: { title: proxies.title },
     home: { title: 'Overview' },
     groups: { title: 'Groups' },
