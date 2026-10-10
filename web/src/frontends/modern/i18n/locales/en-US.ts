@@ -1,5 +1,6 @@
 import { credentialTestMessages } from '@shared/credential-test-messages'
 import { errorRuleMessages } from '@shared/error-rule-messages'
+import { enUS as mirasimStatus } from '@shared/mirasim-status/messages'
 import { enUS as proxies } from '@shared/proxies/messages'
 import { enUS as concurrency } from './concurrency'
 import { enUS as requestRedaction } from './request-redaction'
@@ -28,6 +29,7 @@ import { enUS as subscriptions } from './subscriptions'
 export default {
   credentialBatchTest: credentialTestMessages['en-US'],
   errorRules: errorRuleMessages['en-US'],
+  mirasimStatus,
   proxies,
   concurrency,
   requestRedaction,
@@ -72,7 +74,6 @@ export default {
     mobileNavigationDescription: 'Open a management workspace or observability page.',
     navigationFailed: 'Unable to load this page. Please reload.',
     reload: 'Reload',
-  },
   auth: {
     title: 'Sign in to GPT-Load',
     description: 'Enter an admin key or access key. The server identifies your permissions.',
@@ -111,8 +112,8 @@ export default {
       docker:
         'For Docker, enter the container from your own terminal and read the file. Keep the key out of logs and chats.',
     },
-  },
   pages: {
+    mirasimStatus: { title: mirasimStatus.title },
     proxies: { title: proxies.title },
     home: { title: 'Overview' },
     groups: { title: 'Groups' },
@@ -127,12 +128,10 @@ export default {
     settings: { title: 'Global settings' },
     import: { title: 'Import credentials' },
     login: { title: 'Sign in' },
-  },
   notFound: {
     title: 'Page not found',
     description: 'Check the page address or return to the overview.',
     backHome: 'Back to overview',
-  },
   appearance: {
     theme: 'Display mode',
     language: 'Interface language',
@@ -140,9 +139,7 @@ export default {
       system: 'System',
       light: 'Light',
       dark: 'Dark',
-    },
     persistenceFailed: 'Browser storage is unavailable. Your preferences apply to this visit only.',
-  },
   system: {
     currentVersion: 'Current version: {version}',
     loadingVersion: 'Loading…',
@@ -153,7 +150,6 @@ export default {
     updateAvailable: '{version} available',
     checkFailed: 'Check failed. Try again.',
     authRequired: 'Admin sign-in required',
-  },
   navigation: 'Main navigation',
   skipToContent: 'Skip to main content',
   interfaceSettings: 'Interface',
@@ -163,5 +159,4 @@ export default {
     saveFailed: 'Unable to save your preference. Allow browser storage for this site and retry.',
     modern: { title: 'Modern' },
     classic: { title: 'Classic' },
-  },
 }

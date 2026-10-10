@@ -1,5 +1,6 @@
 import { credentialTestMessages } from '@shared/credential-test-messages'
 import { errorRuleMessages } from '@shared/error-rule-messages'
+import { zhCN as mirasimStatus } from '@shared/mirasim-status/messages'
 import { zhCN as proxies } from '@shared/proxies/messages'
 import { zhCN as concurrency } from './concurrency'
 import { zhCN as requestRedaction } from './request-redaction'
@@ -28,6 +29,7 @@ import { zhCN as subscriptions } from './subscriptions'
 export default {
   credentialBatchTest: credentialTestMessages['zh-CN'],
   errorRules: errorRuleMessages['zh-CN'],
+  mirasimStatus,
   proxies,
   concurrency,
   requestRedaction,
@@ -71,7 +73,6 @@ export default {
     mobileNavigationDescription: '直接进入管理工作区和运行观测页面。',
     navigationFailed: '无法加载页面，请重新加载。',
     reload: '重新加载',
-  },
   auth: {
     title: '登录 GPT-Load',
     description: '输入管理员密钥或访问密钥，系统会识别对应权限。',
@@ -107,8 +108,8 @@ export default {
       file: '未设置 AUTH_KEY 时，密钥位于 {path}；容器默认路径为 {containerPath}。',
       docker: 'Docker 部署可在自己的终端进入容器后读取文件；不要把密钥贴到日志或聊天中。',
     },
-  },
   pages: {
+    mirasimStatus: { title: mirasimStatus.title },
     proxies: { title: proxies.title },
     home: { title: '总览' },
     groups: { title: '分组' },
@@ -123,12 +124,10 @@ export default {
     settings: { title: '全局设置' },
     import: { title: '导入凭据' },
     login: { title: '登录' },
-  },
   notFound: {
     title: '页面不存在',
     description: '请检查页面地址，或返回总览。',
     backHome: '返回总览',
-  },
   appearance: {
     theme: '显示模式',
     language: '界面语言',
@@ -136,9 +135,7 @@ export default {
       system: '跟随系统',
       light: '浅色',
       dark: '深色',
-    },
     persistenceFailed: '浏览器未允许保存偏好，本次选择在当前访问中有效。',
-  },
   system: {
     currentVersion: '当前版本：{version}',
     loadingVersion: '加载中…',
@@ -149,7 +146,6 @@ export default {
     updateAvailable: '新版本 {version}',
     checkFailed: '检查失败，请重试',
     authRequired: '需要管理员登录',
-  },
   navigation: '主导航',
   skipToContent: '跳到主要内容',
   interfaceSettings: '界面设置',
@@ -159,5 +155,4 @@ export default {
     saveFailed: '无法保存界面偏好，请允许本站使用浏览器存储后重试。',
     modern: { title: '现代版' },
     classic: { title: '经典版' },
-  },
 }

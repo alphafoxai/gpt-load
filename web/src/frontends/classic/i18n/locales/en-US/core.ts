@@ -1,7 +1,9 @@
 import { errorRuleMessages } from '@shared/error-rule-messages'
+import { enUS as mirasimStatus } from '@shared/mirasim-status/messages'
 import { enUS as proxies } from '@shared/proxies/messages'
 export default {
   errorRules: errorRuleMessages['en-US'],
+  mirasimStatus,
   proxies,
   concurrency: {
     label: 'Concurrency limit',
@@ -35,7 +37,6 @@ export default {
       accessKeyHelp:
         'Multiplied by the selected Group multiplier. Logs, statistics, and cost limits use adjusted amounts. Default 1; 0 zeroes priced amounts. Future requests only.',
       invalid: 'Enter a multiplier from 0 to 1000 with at most 6 decimals',
-    },
     appName: 'GPT-Load',
     retry: 'Retry',
     modelDiscoveryFailed: 'Discovery failed; draft unchanged',
@@ -49,7 +50,6 @@ export default {
         'Automatic copying failed. Try Copy again, or select the content below to copy it manually.',
       valueLabel: 'Content to copy',
       failed: 'Copying still failed. Select the content above to copy it manually.',
-    },
     pagination: {
       label: 'Pagination',
       total: 'Total: {total}',
@@ -58,7 +58,6 @@ export default {
       pageSizeLabel: 'Items per page',
       previous: 'Previous',
       next: 'Next',
-    },
     reveal: 'Reveal key',
     conceal: 'Conceal key',
     cancel: 'Cancel',
@@ -90,19 +89,15 @@ export default {
         direct: 'Direct',
         custom: 'Custom',
         environment: 'Environment proxy',
-      },
       help: {
         inherit: 'Use the currently effective proxy from the parent scope.',
         direct: 'Explicitly bypass every proxy configured at a parent scope.',
-      },
       source: {
         credential: 'Credential',
         group: 'Group',
         global: 'Global',
         environment: 'Startup environment',
         default: 'Default direct',
-      },
-    },
     subscriptionErrors: {
       oauthFileInvalid: 'The OAuth JSON is invalid or missing required fields',
       oauthFileTooLarge: 'The OAuth JSON file must be smaller than 64 KiB',
@@ -128,14 +123,11 @@ export default {
         'The reset outcome is unknown. Do not reload the page; confirm again to retry safely with the same operation identity',
       operationIncomplete: 'The account was saved, but runtime recovery is still in progress',
       recoveryPending: 'An earlier account operation is still recovering; try again shortly',
-    },
     unsavedChangesDialog: {
       title: 'Discard unsaved changes?',
-      description:
         'Changes on this page have not been saved and cannot be recovered after leaving.',
       cancel: 'Continue editing',
       confirm: 'Discard changes',
-    },
     headerRules: {
       title: 'Header rules',
       description: 'Set or remove upstream request headers.',
@@ -155,9 +147,6 @@ export default {
         duplicate_name: 'Duplicate header names are not allowed (case-insensitive).',
         forbidden_set_name: 'This header cannot be set.',
         invalid_value: 'Header values cannot contain control characters.',
-      },
-    },
-  },
   auth: {
     eyebrow: 'GPT-Load 2.0',
     headline: 'One sign-in, clearly separated access',
@@ -166,16 +155,12 @@ export default {
       1: {
         title: 'Manage channel credentials centrally',
         description: 'Maintain Groups, models, and availability in one place',
-      },
       2: {
         title: 'Keep provider-native protocols',
         description: 'Use clear OpenAI, Anthropic, and Gemini paths',
-      },
       3: {
         title: 'Review usage and estimated cost',
         description: 'See requests, tokens, and cost estimates together',
-      },
-    },
     loginTitle: 'Sign in to GPT-Load',
     loginDescription: 'Enter an AUTH_KEY or access key; the server will identify its access',
     keyLabel: 'Sign-in key',
@@ -207,13 +192,11 @@ export default {
       dockerTitle: 'Docker instance',
       dockerDescription:
         'Run {command} in a controlled terminal before reading the managed file. Never paste its output into logs, tickets, or chats',
-    },
     recoveryPrefix:
       'If the service returns an invalid response, confirm the instance address and health, then',
     recoveryAction: 'verify the session again',
     recoverySuffix: 'or use another management key',
     instance: 'Current instance · {origin}',
-  },
   shell: {
     skip: 'Skip to main content',
     primaryNavigation: 'Primary navigation',
@@ -249,16 +232,13 @@ export default {
     signOut: 'Sign out',
     placeholderDescription: 'This management feature will arrive in a later task in this stage.',
     backHome: 'Back to Home',
-  },
   notFound: {
     eyebrow: 'Navigation Error',
     title: 'This page does not exist',
     description:
       'The address may have changed, or you opened a management page that has not been released yet. Your current session remains valid, and no configuration was changed.',
     requestedPath: 'Requested path',
-    backHome: 'Back to Home',
     backPrevious: 'Go back',
-  },
   home: {
     ledger: {
       title: 'Home',
@@ -320,7 +300,6 @@ export default {
           notAutomatic:
             'Does not recover automatically; an administrator must adjust or remove the total rule',
         },
-      },
       attention: {
         title: 'Needs attention',
         blacklisted: '{group} has {count} blacklisted credentials that need manual action',
@@ -329,11 +308,9 @@ export default {
         lowQuota: '{group} has {remaining} quota left, resets',
         summary: '{count} items need your attention',
         action: 'Resolve',
-      },
       subscriptionAccounts: {
         title: 'Recently used',
         availableGroups: '{available}/{total} available',
-      },
       spend: {
         title: 'Estimated over 30 days',
         viewDetail: 'View details →',
@@ -345,10 +322,8 @@ export default {
           requests: 'Requests',
           tokens: 'Tokens',
           cost: 'Cost',
-        },
         unknownModel: 'Unknown model',
         empty: 'No billable requests in the last 30 days',
-      },
       connection: {
         title: 'Connect to the gateway',
         configuration: 'Configuration',
@@ -394,14 +369,12 @@ export default {
           desktop: 'Desktop apps',
           web: 'Web and extensions',
           unsupported: 'Not available for this key',
-        },
         copyField: 'Copy {field}',
         fieldCopied: '{field} copied',
         fieldCopyFailed: 'Unable to copy the {field}.',
         fields: {
           baseUrl: 'Base URL',
           apiKey: 'API key',
-        },
         fieldsTitle: 'Connection values',
         stepsTitle: 'Setup steps',
         steps: {
@@ -414,43 +387,33 @@ export default {
             s1: 'Create a channel and choose the New API type',
             s2: 'Click “Paste Connection Info” to fill the address and key',
             s3: 'A containerized or remote New API must reach the address above',
-          },
           codex: {
             s1: 'Add the content above to ~/.codex/config.toml',
             s2: 'Copy the access key and set it as GPT_LOAD_API_KEY in the Codex shell',
             s3: 'This custom provider uses the Responses API',
-          },
           'gemini-cli': {
             s1: 'Run the commands above in the shell that starts Gemini CLI',
             s2: 'Then run gemini to use the gateway models',
-          },
           nextchat: {
             s1: 'Enter the base URL and API key above in the desktop app settings',
             s2: 'The web app is blocked by CORS across origins — use the desktop app',
-          },
           'cherry-studio': {
             s1: 'Click “One-click import”, then confirm in the app',
             s2: 'Or add it manually under Settings → Model providers',
             s3: 'Fetch the models afterwards in the model section',
-          },
           'claude-code': {
             s1: 'Replace YOUR_MODEL with a model ID available to this access key, then run the commands above',
             s2: 'Start or restart Claude Code in the same shell; the specified model is used at startup and added as a custom option in /model',
             s3: 'Discovery additionally recognizes gateway model IDs containing claude or anthropic (case-insensitive)',
-          },
           'open-webui': {
             s1: 'Admin Settings → Connections → OpenAI → Add Connection',
             s2: 'Fill in the base URL and API key above',
-          },
           cline: {
             s1: 'Choose OpenAI Compatible in the Cline settings',
             s2: 'Fill in both values above, then pick the actual model',
-          },
           curl: {
             s1: 'Replace YOUR_MODEL with a model available to this key',
             s2: 'Paste the command into a terminal to verify connectivity',
-          },
-        },
         clients: {
           label: 'Client',
           'cc-switch': 'CC Switch',
@@ -463,7 +426,6 @@ export default {
           'open-webui': 'Open WebUI',
           cline: 'Cline',
           curl: 'curl',
-        },
         clientKinds: {
           desktopManager: 'Desktop manager',
           gateway: 'Gateway',
@@ -471,16 +433,9 @@ export default {
           desktop: 'Desktop',
           web: 'Web',
           extension: 'Editor extension',
-          commandLine: 'Command line',
           general: 'General',
-        },
         ccSwitchTargets: {
-          codex: 'Codex',
           claude: 'Claude Code',
           gemini: 'Gemini CLI',
           opencode: 'OpenCode',
-        },
-      },
-    },
-  },
 } as const
