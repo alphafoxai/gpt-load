@@ -291,6 +291,26 @@ func waitLiveSidebandDetached(t *testing.T, handler *Handler, id string) bool {
 	}
 }
 
+// waitLiveSidebandReleased waits for the detached sideband to release its slot.
+func waitLiveSidebandReleased(t *testing.T, handler *Handler, id string) {
+	t.Helper()
+	deadline := time.After(10 * time.Second)
+	for {
+		handler.liveSessions.mu.Lock()
+		call := handler.liveSessions.calls[id]
+		attached := call != nil && call.attached
+		handler.liveSessions.mu.Unlock()
+		if !attached {
+			return
+		}
+		select {
+		case <-deadline:
+			t.Fatal("live sideband was not released after the client closed it")
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+}
+
 func TestCodexLiveCreatesAcrossGroupsPinsOwnerAndLogsOnce(t *testing.T) {
 	echo := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		connection, err := (&websocket.Upgrader{}).Upgrade(w, r, nil)
@@ -370,10 +390,7 @@ func TestCodexLiveCreatesAcrossGroupsPinsOwnerAndLogsOnce(t *testing.T) {
 					}
 				}
 				_ = connection.Close()
-				// 服务端要先看到关闭才会放开 sideband。立刻重连会在 Linux 上撞上仍 attached 的旧连接。
-				if repeat == 0 && !waitLiveSidebandDetached(t, handler, "rtc_1") {
-					t.Fatal("sideband was not released before reconnect")
-				}
+				waitLiveSidebandReleased(t, handler, "rtc_1")
 			}
 		}
 		hungup := liveRequest(t, server.Client(), http.MethodPost, server.URL+location+"/hangup", "gl-client", "", nil)
