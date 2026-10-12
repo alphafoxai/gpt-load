@@ -71,6 +71,12 @@ func BuildCodexCatalogModel(
 		resolved["description"] = model
 		delete(resolved, "upgrade")
 		delete(resolved, "availability_nux")
+		// 未知模型套的是 gpt-5.5 的 272K。DeepSeek V4.1 Flash 的上下文是 1M，
+		// 不在这里改的话，客户端会按模板截断，管理面的覆盖也只对改过的那一台生效。
+		if builtinContextWindow, ok := builtinModelContextWindow(model); ok {
+			resolved["context_window"] = builtinContextWindow
+			resolved["max_context_window"] = builtinContextWindow
+		}
 	}
 
 	automatic, err := clientModelProfileFromTemplate(resolved)
@@ -330,6 +336,17 @@ func codexStrings(value any) ([]string, error) {
 		result = append(result, item)
 	}
 	return result, nil
+}
+
+// builtinModelContextWindow 是没有 Codex 模板、但窗口已知的模型。
+// models.dev 里 DeepSeek V4.1 Flash 的 limit.context 是 1000000。
+func builtinModelContextWindow(model string) (int64, bool) {
+	switch model {
+	case "mira/v4.1-flash", "deepseek-flash":
+		return 1_000_000, true
+	default:
+		return 0, false
+	}
 }
 
 func codexInteger(value any) (int64, error) {
