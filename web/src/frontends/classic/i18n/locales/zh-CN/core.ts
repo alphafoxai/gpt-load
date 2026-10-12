@@ -34,6 +34,7 @@ export default {
       accessKeyHelp:
         '与实际分组倍率相乘；日志、统计和成本额度均使用调整后金额。默认 1，0 将可计价金额归零；仅影响后续请求。',
       invalid: '请输入 0–1000 的倍率，最多 6 位小数',
+    },
     appName: 'GPT-Load',
     retry: '重试',
     modelDiscoveryFailed: '模型发现失败，草稿未变',
@@ -46,6 +47,7 @@ export default {
       description: '自动复制未成功，请再次点击复制，或选中下方内容手动复制。',
       valueLabel: '待复制内容',
       failed: '复制仍未成功，请选中上方内容手动复制。',
+    },
     pagination: {
       label: '分页',
       total: '共 {total} 条',
@@ -54,6 +56,7 @@ export default {
       pageSizeLabel: '每页条数',
       previous: '上一页',
       next: '下一页',
+    },
     reveal: '显示密钥',
     conceal: '隐藏密钥',
     cancel: '取消',
@@ -85,15 +88,19 @@ export default {
         direct: '直连',
         custom: '自定义',
         environment: '环境变量代理',
+      },
       help: {
         inherit: '使用上一级当前生效的代理设置。',
         direct: '显式绕过所有上一级代理设置。',
+      },
       source: {
         credential: '凭据级',
         group: '分组级',
         global: '全局',
         environment: '启动环境',
         default: '默认直连',
+      },
+    },
     subscriptionErrors: {
       oauthFileInvalid: 'OAuth JSON 格式无效或缺少必要字段',
       oauthFileTooLarge: 'OAuth JSON 文件过大，请选择小于 64 KiB 的文件',
@@ -116,11 +123,13 @@ export default {
         '无法确认重置结果；请不要刷新页面，直接再次确认以复用同一操作标识安全重试',
       operationIncomplete: '账号已写入，但运行时仍在恢复，请稍后重新加载',
       recoveryPending: '更早的账号操作仍在恢复，请稍后重试',
+    },
     unsavedChangesDialog: {
       title: '放弃未保存的修改？',
       description: '当前页面的修改尚未保存。离开后，这些修改将无法恢复。',
       cancel: '继续编辑',
       confirm: '放弃修改',
+    },
     headerRules: {
       title: 'HeaderRules',
       description: '设置或移除上游请求 Header。',
@@ -140,6 +149,9 @@ export default {
         duplicate_name: 'Header 名称不区分大小写，不能重复。',
         forbidden_set_name: '不能设置此 Header 名称。',
         invalid_value: 'Header 值不能包含控制字符。',
+      },
+    },
+  },
   auth: {
     eyebrow: 'GPT-Load 2.0',
     headline: '一个登录入口，权限清晰分离',
@@ -148,12 +160,16 @@ export default {
       1: {
         title: '集中管理渠道凭据',
         description: '统一维护分组、模型与可用状态',
+      },
       2: {
         title: '保持原生协议调用',
         description: 'OpenAI、Anthropic 与 Gemini 路径保持清晰',
+      },
       3: {
         title: '查看用量与估算成本',
         description: '请求、Tokens 和费用集中呈现',
+      },
+    },
     loginTitle: '登录 GPT-Load',
     loginDescription: '输入 AUTH_KEY 或访问密钥，服务端会自动识别权限',
     keyLabel: '登录密钥',
@@ -183,10 +199,12 @@ export default {
       dockerTitle: 'Docker 实例',
       dockerDescription:
         '可在受控终端执行 {command} 后读取受管文件。不要把输出粘贴到日志、工单或聊天中',
+    },
     recoveryPrefix: '如果服务返回无效响应，请先确认实例地址与健康状态，再',
     recoveryAction: '重新验证会话',
     recoverySuffix: '或更换管理密钥',
     instance: '当前实例 · {origin}',
+  },
   shell: {
     skip: '跳到主要内容',
     primaryNavigation: '主导航',
@@ -221,13 +239,16 @@ export default {
     signOut: '退出登录',
     placeholderDescription: '该管理功能将在当前实施阶段的后续任务中完成。',
     backHome: '返回首页',
+  },
   notFound: {
     eyebrow: 'Navigation Error',
     title: '这个页面不存在',
     description:
       '地址可能已经更改，或者你打开了一个尚未发布的管理页面。当前登录会话仍然有效，没有配置被修改。',
     requestedPath: '请求路径',
+    backHome: '返回首页',
     backPrevious: '返回上一页',
+  },
   home: {
     ledger: {
       title: '首页',
@@ -284,6 +305,7 @@ export default {
           resetsAt: '当前周期结束：',
           notAutomatic: '不会自动恢复，需要管理员调整或删除总额度规则',
         },
+      },
       attention: {
         title: '需要处理',
         blacklisted: '{group} 有 {count} 个凭据已拉黑，需要人工处理',
@@ -291,9 +313,11 @@ export default {
         lowQuota: '{group} 账号额度剩 {remaining}，重置于',
         summary: '共有 {count} 项需要你处理',
         action: '处理',
+      },
       subscriptionAccounts: {
         title: '最近常用',
         availableGroups: '{available}/{total} 可用',
+      },
       spend: {
         title: '近 30 天估算',
         viewDetail: '查看明细 →',
@@ -305,8 +329,10 @@ export default {
           requests: '请求',
           tokens: 'Tokens',
           cost: '成本',
+        },
         unknownModel: '未知模型',
         empty: '近 30 天还没有可计费的请求',
+      },
       connection: {
         title: '连接到网关',
         configuration: '配置',
@@ -351,12 +377,14 @@ export default {
           desktop: '桌面应用',
           web: '网页与扩展',
           unsupported: '此密钥不支持',
+        },
         copyField: '复制{field}',
         fieldCopied: '已复制{field}',
         fieldCopyFailed: '无法复制{field}。',
         fields: {
           baseUrl: '接口地址',
           apiKey: 'API Key',
+        },
         fieldsTitle: '配置信息',
         stepsTitle: '接入步骤',
         steps: {
@@ -369,33 +397,43 @@ export default {
             s1: '在渠道页新建渠道，类型选择 New API',
             s2: '点「粘贴连接信息」，自动填入地址与密钥',
             s3: '容器或远程部署的 New API 需能访问上方网关地址',
+          },
           codex: {
             s1: '把上方内容写入 ~/.codex/config.toml',
             s2: '复制访问密钥，在启动 Codex 的 Shell 里设为 GPT_LOAD_API_KEY',
             s3: '该自定义 Provider 走 Responses API',
+          },
           'gemini-cli': {
             s1: '在启动 Gemini CLI 的同一个 Shell 里执行上方命令',
             s2: '之后直接运行 gemini 即可使用网关模型',
+          },
           nextchat: {
             s1: '在桌面版设置里填入上方接口地址与 API Key',
             s2: '网页版跨域访问本网关会被 CORS 拦截，请用桌面版',
+          },
           'cherry-studio': {
             s1: '点「一键导入」，在应用内确认写入',
             s2: '或在 设置 → 模型服务 中手动添加，填入上方两项',
             s3: '首次导入后需在模型区拉取模型',
+          },
           'claude-code': {
             s1: '将 YOUR_MODEL 替换为该访问密钥可用的模型 ID，再执行上方命令',
             s2: '在同一 Shell 中启动或重启 Claude Code；指定模型用于启动，并作为自定义选项加入 /model',
             s3: '自动发现额外识别 ID 含 claude 或 anthropic 的网关模型（不区分大小写）',
+          },
           'open-webui': {
             s1: '管理员设置 → Connections → OpenAI → 添加连接',
             s2: '填入上方接口地址与 API Key',
+          },
           cline: {
             s1: '在 Cline 设置里选择 OpenAI Compatible',
             s2: '填入上方两项，再获取或选择实际模型',
+          },
           curl: {
             s1: '把命令里的 YOUR_MODEL 换成此密钥可用的模型',
             s2: '直接粘进终端即可验证连通',
+          },
+        },
         clients: {
           label: '客户端',
           'cc-switch': 'CC Switch',
@@ -408,6 +446,7 @@ export default {
           'open-webui': 'Open WebUI',
           cline: 'Cline',
           curl: 'curl',
+        },
         clientKinds: {
           desktopManager: '桌面管理器',
           gateway: '网关',
@@ -415,9 +454,16 @@ export default {
           desktop: '桌面',
           web: '网页',
           extension: '编辑器扩展',
+          commandLine: '命令行',
           general: '通用',
+        },
         ccSwitchTargets: {
+          codex: 'Codex',
           claude: 'Claude Code',
           gemini: 'Gemini CLI',
           opencode: 'OpenCode',
+        },
+      },
+    },
+  },
 } as const

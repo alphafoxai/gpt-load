@@ -74,6 +74,7 @@ export default {
     mobileNavigationDescription: '管理ワークスペースや運用状況のページへ移動します。',
     navigationFailed: 'ページを読み込めません。再読み込みしてください。',
     reload: '再読み込み',
+  },
   auth: {
     title: 'GPT-Load にログイン',
     description: '管理者キーまたはアクセスキーを入力すると、サーバーが権限を判定します。',
@@ -111,6 +112,7 @@ export default {
       docker:
         'Docker の場合は自分の端末からコンテナに入り、ファイルを確認してください。キーをログやチャットに貼り付けないでください。',
     },
+  },
   pages: {
     mirasimStatus: { title: mirasimStatus.title },
     proxies: { title: proxies.title },
@@ -127,10 +129,12 @@ export default {
     settings: { title: 'グローバル設定' },
     import: { title: '認証情報のインポート' },
     login: { title: 'ログイン' },
+  },
   notFound: {
     title: 'ページが見つかりません',
     description: 'ページのアドレスを確認するか、概要に戻ってください。',
     backHome: '概要に戻る',
+  },
   appearance: {
     theme: '表示モード',
     language: '表示言語',
@@ -138,7 +142,9 @@ export default {
       system: 'システム',
       light: 'ライト',
       dark: 'ダーク',
+    },
     persistenceFailed: 'ブラウザに保存できません。設定は今回のアクセス中のみ有効です。',
+  },
   system: {
     currentVersion: '現在のバージョン：{version}',
     loadingVersion: '読み込み中…',
@@ -149,6 +155,7 @@ export default {
     updateAvailable: '新バージョン {version}',
     checkFailed: '確認に失敗しました。再試行してください。',
     authRequired: '管理者ログインが必要です',
+  },
   navigation: 'メインナビゲーション',
   skipToContent: 'メインコンテンツへ移動',
   interfaceSettings: '画面設定',
@@ -158,4 +165,5 @@ export default {
     saveFailed: '設定を保存できません。このサイトのブラウザストレージを許可してください。',
     modern: { title: 'モダン版' },
     classic: { title: 'クラシック版' },
+  },
 }

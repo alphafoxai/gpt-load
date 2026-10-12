@@ -36,6 +36,7 @@ export default {
       accessKeyHelp:
         '選択されたグループ倍率と乗算します。ログ、統計、コスト上限は調整後の金額を使用します。既定値は 1、0 は計算可能な金額をゼロにします。以後のリクエストに適用されます。',
       invalid: '0〜1000 の倍率を小数点以下 6 桁以内で入力してください',
+    },
     appName: 'GPT-Load',
     retry: '再試行',
     modelDiscoveryFailed: 'モデル取得に失敗しました。下書きは未変更です',
@@ -49,6 +50,7 @@ export default {
         '自動コピーに失敗しました。もう一度コピーを押すか、下の内容を選択して手動でコピーしてください。',
       valueLabel: 'コピーする内容',
       failed: 'コピーに失敗しました。上の内容を選択して手動でコピーしてください。',
+    },
     pagination: {
       label: 'ページ送り',
       total: '全 {total} 件',
@@ -57,6 +59,7 @@ export default {
       pageSizeLabel: '1 ページあたりの件数',
       previous: '前へ',
       next: '次へ',
+    },
     reveal: 'キーを表示',
     conceal: 'キーを隠す',
     cancel: 'キャンセル',
@@ -88,15 +91,19 @@ export default {
         direct: '直接接続',
         custom: 'カスタム',
         environment: '環境変数プロキシ',
+      },
       help: {
         inherit: '上位スコープで現在有効なプロキシ設定を使用します。',
         direct: '上位スコープのすべてのプロキシ設定を明示的に回避します。',
+      },
       source: {
         credential: '認証情報',
         group: 'グループ',
         global: 'グローバル',
         environment: '起動環境',
         default: '既定の直接接続',
+      },
+    },
     subscriptionErrors: {
       oauthFileInvalid: 'OAuth JSON が無効、または必須項目がありません',
       oauthFileTooLarge: 'OAuth JSON ファイルは 64 KiB 未満にしてください',
@@ -125,11 +132,13 @@ export default {
         'リセット結果を確認できません。ページを再読み込みせず、もう一度確認して同じ操作 ID で安全に再試行してください',
       operationIncomplete: 'アカウントは保存されましたが、ランタイムを復旧中です',
       recoveryPending: '先行するアカウント操作を復旧中です。しばらくしてから再試行してください',
+    },
     unsavedChangesDialog: {
       title: '未保存の変更を破棄しますか？',
       description: 'このページの変更は保存されていません。移動すると復元できません。',
       cancel: '編集を続ける',
       confirm: '変更を破棄',
+    },
     headerRules: {
       title: 'HeaderRules',
       description: 'アップストリーム要求ヘッダーを設定または削除します。',
@@ -149,6 +158,9 @@ export default {
         duplicate_name: 'ヘッダー名は大文字小文字を区別せず、重複できません。',
         forbidden_set_name: 'このヘッダー名は設定できません。',
         invalid_value: 'ヘッダー値に制御文字は使用できません。',
+      },
+    },
+  },
   auth: {
     eyebrow: 'GPT-Load 2.0',
     headline: '1 つのログイン入口で、権限を明確に分離',
@@ -157,12 +169,16 @@ export default {
       1: {
         title: 'チャネル認証情報を一元管理',
         description: 'グループ、モデル、利用可能状況をまとめて管理します',
+      },
       2: {
         title: 'ネイティブプロトコルを維持',
         description: 'OpenAI、Anthropic、Gemini のパスを明確に保ちます',
+      },
       3: {
         title: '使用量と推定コストを確認',
         description: 'リクエスト、トークン、費用をまとめて表示します',
+      },
+    },
     loginTitle: 'GPT-Load にログイン',
     loginDescription: 'AUTH_KEY またはアクセスキーを入力すると、サーバーが権限を自動判定します',
     keyLabel: 'ログインキー',
@@ -194,10 +210,12 @@ export default {
       dockerTitle: 'Docker インスタンス',
       dockerDescription:
         '管理された端末で {command} を実行してからキーのファイルを確認してください。出力をログ、チケット、チャットに貼り付けないでください',
+    },
     recoveryPrefix: 'サービスが無効な応答を返す場合は、インスタンスのアドレスと状態を確認してから',
     recoveryAction: 'セッションを再確認',
     recoverySuffix: 'するか、別の管理キーを使用してください',
     instance: '現在のインスタンス · {origin}',
+  },
   shell: {
     skip: 'メインコンテンツへ移動',
     primaryNavigation: 'メインナビゲーション',
@@ -233,13 +251,16 @@ export default {
     signOut: 'ログアウト',
     placeholderDescription: 'この管理機能は、このステージの後続タスクで実装されます。',
     backHome: 'ホームへ戻る',
+  },
   notFound: {
     eyebrow: 'ナビゲーションエラー',
     title: 'このページは存在しません',
     description:
       'アドレスが変更されたか、まだ公開されていない管理ページを開いた可能性があります。現在のログインセッションは有効で、設定は変更されていません。',
     requestedPath: 'リクエストパス',
+    backHome: 'ホームへ戻る',
     backPrevious: '前のページへ戻る',
+  },
   home: {
     ledger: {
       title: 'ホーム',
@@ -300,6 +321,7 @@ export default {
           notAutomatic:
             '自動では回復しません。管理者が総額ルールを調整または削除する必要があります',
         },
+      },
       attention: {
         title: '対応が必要',
         blacklisted: '{group} に {count} 件のブラックリスト入り認証情報があります',
@@ -308,9 +330,11 @@ export default {
         lowQuota: '{group} の残額度は {remaining}、リセットは',
         summary: '{count} 件の対応が必要です',
         action: '対応',
+      },
       subscriptionAccounts: {
         title: '最近よく使う',
         availableGroups: '{available}/{total} 利用可能',
+      },
       spend: {
         title: '直近 30 日間の概算',
         viewDetail: '詳細を見る →',
@@ -322,8 +346,10 @@ export default {
           requests: 'リクエスト',
           tokens: 'トークン',
           cost: 'コスト',
+        },
         unknownModel: '不明なモデル',
         empty: '直近 30 日間に課金対象のリクエストはありません',
+      },
       connection: {
         title: 'ゲートウェイへ接続',
         configuration: '設定',
@@ -370,12 +396,14 @@ export default {
           desktop: 'デスクトップアプリ',
           web: 'Web と拡張',
           unsupported: 'このキーでは利用不可',
+        },
         copyField: '{field}をコピー',
         fieldCopied: '{field}をコピーしました',
         fieldCopyFailed: '{field}をコピーできません。',
         fields: {
           baseUrl: 'エンドポイント',
           apiKey: 'API キー',
+        },
         fieldsTitle: '接続情報',
         stepsTitle: '接続手順',
         steps: {
@@ -388,33 +416,43 @@ export default {
             s1: 'チャンネルを新規作成し、種別に New API を選びます',
             s2: '「接続情報を貼り付け」を押すとアドレスとキーが入ります',
             s3: 'コンテナやリモートの New API は上のアドレスへ到達できる必要があります',
+          },
           codex: {
             s1: '上の内容を ~/.codex/config.toml に追加します',
             s2: 'アクセスキーをコピーし、Codex を起動するシェルで GPT_LOAD_API_KEY に設定します',
             s3: 'このカスタム Provider は Responses API を使います',
+          },
           'gemini-cli': {
             s1: 'Gemini CLI を起動するシェルで上のコマンドを実行します',
             s2: 'あとは gemini を実行すればゲートウェイのモデルを利用できます',
+          },
           nextchat: {
             s1: 'デスクトップ版の設定に上のエンドポイントと API キーを入力します',
             s2: 'Web 版はクロスオリジンで CORS に阻まれます。デスクトップ版を使ってください',
+          },
           'cherry-studio': {
             s1: '「ワンクリックインポート」を押し、アプリ側で確認します',
             s2: 'または 設定 → モデルサービス から手動で追加します',
             s3: '初回インポート後にモデル一覧を取得してください',
+          },
           'claude-code': {
             s1: 'YOUR_MODEL をこのアクセスキーで利用可能なモデル ID に置き換え、上のコマンドを実行します',
             s2: '同じシェルで Claude Code を起動または再起動します。指定モデルが起動時に使われ、/model にカスタム項目として追加されます',
             s3: '自動検出では ID に claude または anthropic を含むゲートウェイモデルも対象になります（大文字・小文字は区別しません）',
+          },
           'open-webui': {
             s1: '管理者設定 → Connections → OpenAI → 接続を追加',
             s2: '上のエンドポイントと API キーを入力します',
+          },
           cline: {
             s1: 'Cline の設定で OpenAI Compatible を選びます',
             s2: '上の 2 項目を入力し、実際のモデルを選択します',
+          },
           curl: {
             s1: 'コマンド内の YOUR_MODEL をこのキーで使えるモデルに置き換えます',
             s2: 'ターミナルに貼り付けて接続を確認できます',
+          },
+        },
         clients: {
           label: 'クライアント',
           'cc-switch': 'CC Switch',
@@ -427,6 +465,7 @@ export default {
           'open-webui': 'Open WebUI',
           cline: 'Cline',
           curl: 'curl',
+        },
         clientKinds: {
           desktopManager: 'デスクトップ管理',
           gateway: 'ゲートウェイ',
@@ -434,9 +473,16 @@ export default {
           desktop: 'デスクトップ',
           web: 'Web',
           extension: 'エディター拡張',
+          commandLine: 'コマンドライン',
           general: '汎用',
+        },
         ccSwitchTargets: {
+          codex: 'Codex',
           claude: 'Claude Code',
           gemini: 'Gemini CLI',
           opencode: 'OpenCode',
+        },
+      },
+    },
+  },
 } as const
