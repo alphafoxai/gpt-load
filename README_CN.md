@@ -118,6 +118,8 @@ docker compose exec gpt-load sh -c 'cat /app/data/auth.key'
 2. **创建 Group** — 选择渠道，配置可用模型与运行策略。
 3. **创建 AccessKey** — 设置允许访问的 Group 与客户端协议，把生成的 AccessKey 交给应用使用。
 
+**可选流式重试（`empty_response_retry`，默认关闭）。** 启用后，正常结束但无产出的空流，以及正文、工具调用或其他非推理产出之前被上游截断的流，可在客户端零字节下发时换候选重试。Anthropic 的 thinking/redacted_thinking 块及 thinking/signature 增量会从每次尝试的首个缓冲字节起最多压住 45 秒；有正文或达到缓冲上限时提前释放。空推理占位不算实际产出。重试可能累加等待时间及上游用量。显式 error 事件、有明确原因的业务终止、业务拒绝、取消、内部错误和已完成流不会被改判为截断。所有候选均截断时仍交付最后一条原始流，即使 HTTP 200，也记录为 `incomplete` / `upstream_stream_truncated`。字节一旦下发，后续断流不能透明重放。日志 `first_response_ms` 表示上游首响，不是客户端首字节延迟。
+
 <details>
 <summary>订阅渠道的 OAuth 回调端口</summary>
 

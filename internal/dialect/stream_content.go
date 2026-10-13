@@ -42,7 +42,7 @@ func (*Anthropic) ClassifyStreamContent(event StreamEvent) StreamContent {
 	}
 	switch eventType {
 	case "content_block_start":
-		return StreamContent{Produced: anthropicBlockProducedContent(object.ContentBlock)}
+		return anthropicBlockProducedContent(object.ContentBlock)
 	case "content_block_delta":
 		return anthropicDeltaProducedContent(object.Delta)
 	case "message_delta":
@@ -170,9 +170,9 @@ func openAIChoicesOutcome(raw json.RawMessage) (produced bool, explainedStop boo
 
 // anthropicBlockProducedContent 判定 content_block_start 是否已经带来产出。
 // 空文本块只是占位；工具调用与其他非文本块本身即产出。
-func anthropicBlockProducedContent(raw json.RawMessage) bool {
+func anthropicBlockProducedContent(raw json.RawMessage) StreamContent {
 	if !producedContentValue(raw) {
-		return false
+		return StreamContent{}
 	}
 	var block struct {
 		Type     string          `json:"type"`
@@ -180,18 +180,20 @@ func anthropicBlockProducedContent(raw json.RawMessage) bool {
 		Thinking json.RawMessage `json:"thinking"`
 	}
 	if json.Unmarshal(raw, &block) != nil {
-		return false
+		return StreamContent{Produced: true}
 	}
 	switch block.Type {
 	case "text":
-		return producedContentValue(block.Text)
+		return StreamContent{Produced: producedContentValue(block.Text)}
 	case "thinking":
-		return producedContentValue(block.Thinking)
+		return StreamContent{Produced: producedContentValue(block.Thinking), Hidden: true}
+	case "redacted_thinking":
+		return StreamContent{Produced: true, Hidden: true}
 	case "":
-		return false
+		return StreamContent{}
 	default:
-		// 工具调用、脱敏推理等块本身即产出。
-		return true
+		// 工具调用等块本身即非推理产出，必须立即提交。
+		return StreamContent{Produced: true}
 	}
 }
 
@@ -216,8 +218,8 @@ func geminiExplainedStop(reason string) bool {
 }
 
 // anthropicDeltaProducedContent 判定 content_block_delta 的产出与可见性。
-// thinking/redacted 推理是唯一「有产出但不可见」的形态：它先于正文到达，
-// 且不代表用户已经看到任何内容，因此这类截断仍可安全换候选重试。
+// thinking/signature 增量在提交前单独缓冲；文本与工具增量一旦到达就释放缓冲。
+// 是否能重试仍取决于客户端零字节下发及上游缺少终态，不能仅凭推理类型判断。
 func anthropicDeltaProducedContent(raw json.RawMessage) StreamContent {
 	if !producedContentValue(raw) {
 		return StreamContent{}
@@ -228,17 +230,14 @@ func anthropicDeltaProducedContent(raw json.RawMessage) StreamContent {
 		Thinking    json.RawMessage `json:"thinking"`
 		PartialJSON json.RawMessage `json:"partial_json"`
 		Data        json.RawMessage `json:"data"`
+		Signature   json.RawMessage `json:"signature"`
 	}
 	if json.Unmarshal(raw, &delta) != nil {
 		return StreamContent{Produced: true}
 	}
 	hidden := delta.Type == "thinking_delta" || delta.Type == "signature_delta"
-	produced := hidden ||
-		anyProducedContentValue(delta.Text, delta.Thinking, delta.PartialJSON, delta.Data)
-	if !produced {
-		return StreamContent{}
-	}
-	return StreamContent{Produced: true, Hidden: hidden}
+	produced := anyProducedContentValue(delta.Text, delta.Thinking, delta.PartialJSON, delta.Data, delta.Signature)
+	return StreamContent{Produced: produced, Hidden: hidden}
 }
 
 // geminiPartsProducedContent 判定候选内容中是否存在实际产出的 part。

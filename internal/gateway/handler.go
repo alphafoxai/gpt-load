@@ -1393,7 +1393,8 @@ func (handler *Handler) executeAttempts(
 		if recorder != nil {
 			attemptCompleted = recorder.now()
 		}
-		requestCanceled := ginContext.Request.Context().Err() != nil
+		requestCanceled := ginContext.Request.Context().Err() != nil || errors.Is(result.Err, context.Canceled) ||
+			result.ExecutionError != nil && result.ExecutionError.Kind == execution.ErrorKindCanceled
 		if stream && result.Committed && result.Stream.EndReason == StreamEndNone {
 			result.Stream = prioritizeStreamObservation(
 				ginContext.Request.Context(),

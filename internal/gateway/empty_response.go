@@ -2,7 +2,9 @@ package gateway
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"gpt-load/internal/dialect"
@@ -96,6 +98,34 @@ func (preread *emptyResponsePreread) phaseWindow(reasoning bool) time.Duration {
 		return emptyResponsePrereadWindow
 	}
 	return preread.window
+}
+
+// replayableStreamFailure 只识别尚未完成的上游读流故障；不能覆盖取消、内部错误
+// 或明确的业务拒绝。网关 EOF 校验与适配器读流错误均可提供这份证据。
+func replayableStreamFailure(ctx context.Context, downstreamErr error, evidence *execution.ErrorEvidence) bool {
+	if ctx.Err() != nil || errors.Is(downstreamErr, context.Canceled) ||
+		errors.Is(downstreamErr, context.DeadlineExceeded) || errors.Is(downstreamErr, errRedactionStream) {
+		return false
+	}
+	if evidence != nil {
+		if evidence.OriginHint != "" && evidence.OriginHint != execution.ErrorOriginUpstream ||
+			evidence.Hint != "" || evidence.StatusCode >= 300 {
+			return false
+		}
+		switch evidence.Kind {
+		case execution.ErrorKindTransport, execution.ErrorKindTimeout, execution.ErrorKindProvider:
+		default:
+			return false
+		}
+	}
+	if downstreamErr != nil {
+		var failure *streamFailure
+		if errors.As(downstreamErr, &failure) {
+			return failure.kind == streamFailureProtocol || failure.kind == streamFailureUpstreamRead || failure.kind == streamFailureIdle
+		}
+		return errors.Is(downstreamErr, ErrUpstreamProtocol)
+	}
+	return evidence != nil
 }
 
 // flush 取出已压住的数据并清空缓冲，同时报告其中是否含有协议终态边界。

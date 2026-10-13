@@ -61,6 +61,7 @@ type streamEventObserver struct {
 	content            dialect.StreamContentClassifier
 	sawContent         bool
 	sawVisibleContent  bool
+	sawReasoning       bool
 	sawExplainedStop   bool
 	firstProviderError bool
 	sawErrorEvent      bool
@@ -308,6 +309,7 @@ func (observer *streamEventObserver) classify(
 		content := safeClassifyStreamContent(observer.content, event)
 		observer.sawContent = observer.sawContent || content.Produced
 		observer.sawVisibleContent = observer.sawVisibleContent || (content.Produced && !content.Hidden)
+		observer.sawReasoning = observer.sawReasoning || content.Hidden
 		observer.sawExplainedStop = observer.sawExplainedStop || content.ExplainedStop
 	}
 	providerError := genericProviderError ||

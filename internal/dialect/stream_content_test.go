@@ -352,13 +352,6 @@ func TestAnthropicThinkingIsHiddenContent(t *testing.T) {
 		wantHidden   bool
 	}{
 		{
-			name: "empty thinking delta still marks reasoning",
-			event: StreamEvent{Name: "content_block_delta", Payload: []byte(
-				`{"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"reason"}}`,
-			)},
-			wantProduced: true, wantHidden: true,
-		},
-		{
 			name: "signature delta is hidden reasoning",
 			event: StreamEvent{Name: "content_block_delta", Payload: []byte(
 				`{"type":"content_block_delta","delta":{"type":"signature_delta","signature":"opaque"}}`,
@@ -378,6 +371,13 @@ func TestAnthropicThinkingIsHiddenContent(t *testing.T) {
 				`{"type":"content_block_delta","delta":{"type":"input_json_delta","partial_json":"{\"a\":"}}`,
 			)},
 			wantProduced: true, wantHidden: false,
+		},
+		{
+			name: "empty thinking marks the phase but produces no content",
+			event: StreamEvent{Name: "content_block_delta", Payload: []byte(
+				`{"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":""}}`,
+			)},
+			wantProduced: false, wantHidden: true,
 		},
 		{
 			name: "empty text delta is neither",
