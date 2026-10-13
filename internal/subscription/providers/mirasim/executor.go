@@ -58,10 +58,10 @@ func (e *Executor) Execute(ctx context.Context, credential Storage, request Exec
 	credential = applyRelayOverride(credential, request.BaseURL)
 	response, err := clientFor(credential, request).Do(ctx, http.MethodPost, route.Path, nil, requestHeaders(request.Headers, route.Format), body)
 	if err != nil {
-		return ExecuteResponse{}, err
+		return ExecuteResponse{UpstreamRequestPath: route.Path}, err
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return ExecuteResponse{}, NewStatusError(response.StatusCode, response.Body, response.Header)
+		return ExecuteResponse{UpstreamRequestPath: route.Path}, NewStatusError(response.StatusCode, response.Body, response.Header)
 	}
 	upstream := response.Body
 	if route.Format == sdktranslator.FormatCodex {
@@ -90,7 +90,9 @@ func (e *Executor) ExecuteStream(ctx context.Context, credential Storage, reques
 	credential = applyRelayOverride(credential, request.BaseURL)
 	response, stream, err := clientFor(credential, request).DoStream(ctx, http.MethodPost, route.Path, nil, requestHeaders(request.Headers, route.Format), body)
 	if err != nil {
-		return ExecuteResponse{}, nil, err
+		// 失败也要带上已经选定的路径。否则调用方只能退回通道默认的
+		// Responses 协议，Claude 打到 /v1/messages 也会被记成 openai-responses。
+		return ExecuteResponse{UpstreamRequestPath: route.Path}, nil, err
 	}
 	headers := cloneHeader(response.Header)
 	headers.Set("Content-Type", "text/event-stream")
