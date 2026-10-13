@@ -17,13 +17,16 @@ const (
 	emptyResponsePrereadEvents = 8
 	emptyResponsePrereadBytes  = 256 << 10
 	emptyResponsePrereadWindow = 5 * time.Second
-	// 仅推理（thinking）阶段的独立预算。这一阶段用户还没有看到任何内容，
-	// 留着响应头未提交可让「首个正文增量之前的截断」换候选重试。窗口是延迟
-	// 上限：推理内容会被压住最多这么久才交给客户端，因此刻意保持短——它只需
-	// 覆盖观测到的截断窗口（首字节后约 2–14 秒）。事件与字节只作兜底。
-	reasoningPrereadEvents = 1024
-	reasoningPrereadBytes  = 2 << 20
-	reasoningPrereadWindow = 15 * time.Second
+	// 仅推理（thinking）阶段的独立预算。这一阶段用户还没有看到任何内容，留着响应头
+	// 未提交才能让「首个正文增量之前的截断」换候选重试。窗口就是延迟上限：推理会被
+	// 压住最多这么久才交给客户端。
+	//
+	// 45s 来自实测：opus 的推理阶段常见 5–47s，而真实的截断发生在首事件后 17.6s 与
+	// 27.6s（更早的 15s 窗口把这两次都提前提交了，一次都没救回来）。事件与字节只作
+	// 兜底：推理以每秒约一个 ping 推进，45s 内事件数远低于上限。
+	reasoningPrereadEvents = 4096
+	reasoningPrereadBytes  = 8 << 20
+	reasoningPrereadWindow = 45 * time.Second
 )
 
 // emptyResponsePreread 在提交响应前压住尚未产出内容的前导事件，使空回仍处于
