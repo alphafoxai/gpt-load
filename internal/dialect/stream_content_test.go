@@ -339,6 +339,65 @@ func TestStreamEventsReportExplainedStop(t *testing.T) {
 	}
 }
 
+// TestAnthropicThinkingIsHiddenContent 固定 Anthropic 推理增量的可见性契约：
+// thinking/signature 增量算产出但不可见，文本与工具输入既算产出也可见。提交前
+// 截断判定依赖这个区别，让「只在推理前导后断开」的流换候选重试。
+func TestAnthropicThinkingIsHiddenContent(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		event        StreamEvent
+		wantProduced bool
+		wantHidden   bool
+	}{
+		{
+			name: "empty thinking delta still marks reasoning",
+			event: StreamEvent{Name: "content_block_delta", Payload: []byte(
+				`{"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"reason"}}`,
+			)},
+			wantProduced: true, wantHidden: true,
+		},
+		{
+			name: "signature delta is hidden reasoning",
+			event: StreamEvent{Name: "content_block_delta", Payload: []byte(
+				`{"type":"content_block_delta","delta":{"type":"signature_delta","signature":"opaque"}}`,
+			)},
+			wantProduced: true, wantHidden: true,
+		},
+		{
+			name: "text delta is visible",
+			event: StreamEvent{Name: "content_block_delta", Payload: []byte(
+				`{"type":"content_block_delta","delta":{"type":"text_delta","text":"hi"}}`,
+			)},
+			wantProduced: true, wantHidden: false,
+		},
+		{
+			name: "tool input delta is visible",
+			event: StreamEvent{Name: "content_block_delta", Payload: []byte(
+				`{"type":"content_block_delta","delta":{"type":"input_json_delta","partial_json":"{\"a\":"}}`,
+			)},
+			wantProduced: true, wantHidden: false,
+		},
+		{
+			name: "empty text delta is neither",
+			event: StreamEvent{Name: "content_block_delta", Payload: []byte(
+				`{"type":"content_block_delta","delta":{"type":"text_delta","text":""}}`,
+			)},
+			wantProduced: false, wantHidden: false,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			got := NewAnthropic().ClassifyStreamContent(test.event)
+			if got.Produced != test.wantProduced || got.Hidden != test.wantHidden {
+				t.Fatalf("Produced/Hidden = %v/%v, want %v/%v", got.Produced, got.Hidden, test.wantProduced, test.wantHidden)
+			}
+		})
+	}
+}
+
 // TestOpenAIClassifierToleratesIrregularChoices 保证产出判定不会收紧协议校验。
 // 生命周期分类对所有流生效（与空回开关无关）：兼容渠道输出不规范的 choices 时，
 // 流必须照常转发；产出判定则按有产出处理，不把它误判为空回。

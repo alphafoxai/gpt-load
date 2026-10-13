@@ -303,15 +303,14 @@ func streamOutcomeAcrossTwoCandidates(t *testing.T, body string, enabled bool) s
 }
 
 // TestEmptyRetryLeavesOtherEndingsUnchanged 固定开关的影响边界：只有「自然结束
-// 却没有产出」才会被重试；其余结局在开启后必须与关闭时逐字节一致，包括压住
-// 前导后才出现的错误、没有终态就断开的流、由终止原因解释的空结果，以及携带
+// 却没有产出」和「首个可见增量之前断开」会被重试；其余结局在开启后必须与关闭时
+// 逐字节一致，包括压住前导后才出现的错误、由终止原因解释的空结果，以及携带
 // 非标准产出字段的响应。
 func TestEmptyRetryLeavesOtherEndingsUnchanged(t *testing.T) {
 	const preamble = "data: {\"id\":\"c\",\"object\":\"chat.completion.chunk\"," +
 		"\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\"}}]}\n\n"
 	cases := map[string]string{
 		"error after held preamble": preamble + "data: {\"error\":{\"message\":\"upstream exploded\"}}\n\n",
-		"eof without terminal":      preamble,
 		"output budget exhausted": preamble + "data: {\"id\":\"c\",\"object\":\"chat.completion.chunk\"," +
 			"\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"length\"}]}\n\ndata: [DONE]\n\n",
 		"content filtered": preamble + "data: {\"id\":\"c\",\"object\":\"chat.completion.chunk\"," +
@@ -327,6 +326,27 @@ func TestEmptyRetryLeavesOtherEndingsUnchanged(t *testing.T) {
 				t.Fatalf("enabled outcome = %+v, want identical to disabled %+v", enabled, disabled)
 			}
 		})
+	}
+}
+
+// TestTruncatedBeforeContentRetriesAnotherCandidate 固定新契约：上游在首个可见
+// 增量之前断开（客户端一个字节都没收到）时，开启开关后应换下一个候选重试，而不是
+// 直接把这条截断流交给客户端。这是 Mira Claude 只在推理前导后断开的真实故障形态。
+func TestTruncatedBeforeContentRetriesAnotherCandidate(t *testing.T) {
+	const preamble = "data: {\"id\":\"c\",\"object\":\"chat.completion.chunk\"," +
+		"\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\"}}]}\n\n"
+
+	disabled := streamOutcomeAcrossTwoCandidates(t, preamble, false)
+	if disabled.calls != 1 {
+		t.Fatalf("disabled calls = %d, want a single attempt", disabled.calls)
+	}
+
+	enabled := streamOutcomeAcrossTwoCandidates(t, preamble, true)
+	if enabled.calls != 2 {
+		t.Fatalf("enabled calls = %d, want the truncation retried on another candidate", enabled.calls)
+	}
+	if enabled.body != disabled.body || enabled.status != disabled.status {
+		t.Fatalf("enabled outcome = %+v, want the upstream bytes preserved from %+v", enabled, disabled)
 	}
 }
 

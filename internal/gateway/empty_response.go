@@ -17,6 +17,13 @@ const (
 	emptyResponsePrereadEvents = 8
 	emptyResponsePrereadBytes  = 256 << 10
 	emptyResponsePrereadWindow = 5 * time.Second
+	// 仅推理（thinking）阶段的独立预算。这一阶段用户还没有看到任何内容，
+	// 留着响应头未提交可让「首个正文增量之前的截断」换候选重试。窗口是延迟
+	// 上限：推理内容会被压住最多这么久才交给客户端，因此刻意保持短——它只需
+	// 覆盖观测到的截断窗口（首字节后约 2–14 秒）。事件与字节只作兜底。
+	reasoningPrereadEvents = 1024
+	reasoningPrereadBytes  = 2 << 20
+	reasoningPrereadWindow = 15 * time.Second
 )
 
 // emptyResponsePreread 在提交响应前压住尚未产出内容的前导事件，使空回仍处于
@@ -53,7 +60,9 @@ func (preread *emptyResponsePreread) holding() bool {
 // 此时调用方需要把 flush 的内容与当前数据一起写出。terminal 表示 data 中含有
 // 协议终态边界，提交时需要据此标记终态已下发。ended 表示协议终态已经到达：事件
 // 数上限只用来区分「模型仍在工作」，流已结束时不再适用，完整的空回要留给空回判定。
-func (preread *emptyResponsePreread) hold(data []byte, events int, terminal, ended bool) bool {
+// reasoning 表示这部数据当前只包含隐藏的推理产出：此时用更宽的独立预算，让首个
+// 可见增量之前的截断仍保持未提交。
+func (preread *emptyResponsePreread) hold(data []byte, events int, terminal, ended, reasoning bool) bool {
 	if !preread.active() {
 		return false
 	}
@@ -61,14 +70,29 @@ func (preread *emptyResponsePreread) hold(data []byte, events int, terminal, end
 	if preread.started.IsZero() {
 		preread.started = now
 	}
-	if (!ended && events >= emptyResponsePrereadEvents) ||
-		len(preread.pending)+len(data) >= emptyResponsePrereadBytes ||
-		now.Sub(preread.started) >= preread.window {
+	eventLimit, byteLimit, window := emptyResponsePrereadEvents, emptyResponsePrereadBytes, preread.window
+	if reasoning {
+		eventLimit, byteLimit, window = reasoningPrereadEvents, reasoningPrereadBytes, reasoningPrereadWindow
+	}
+	if (!ended && events >= eventLimit) ||
+		len(preread.pending)+len(data) >= byteLimit ||
+		now.Sub(preread.started) >= window {
 		return false
 	}
 	preread.pending = append(preread.pending, data...)
 	preread.pendingTerminal = preread.pendingTerminal || terminal
 	return true
+}
+
+// phaseWindow 报告当前阶段的预读窗口：仅推理阶段用更宽的窗口。
+func (preread *emptyResponsePreread) phaseWindow(reasoning bool) time.Duration {
+	if reasoning {
+		return reasoningPrereadWindow
+	}
+	if preread == nil || preread.window <= 0 {
+		return emptyResponsePrereadWindow
+	}
+	return preread.window
 }
 
 // flush 取出已压住的数据并清空缓冲，同时报告其中是否含有协议终态边界。

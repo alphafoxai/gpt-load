@@ -86,14 +86,17 @@ type UpstreamResult struct {
 	Committed                 bool
 	ProviderErrorBeforeCommit bool
 	EmptyResponseBeforeCommit bool
-	Stream                    StreamObservation
-	Usage                     usage.Result
-	DispatchState             execution.DispatchState
-	ResponseStarted           bool
-	UpstreamProtocol          protocol.Protocol
-	AppliedReasoning          reasoning.Config
-	UpstreamRequestID         string
-	ExecutionError            *execution.ErrorEvidence
+	// TruncatedBeforeCommit 表示上游在首个可见增量之前断开，响应尚未提交给
+	// 客户端。此时换候选重试是安全的：客户端没有收到任何内容。
+	TruncatedBeforeCommit bool
+	Stream                StreamObservation
+	Usage                 usage.Result
+	DispatchState         execution.DispatchState
+	ResponseStarted       bool
+	UpstreamProtocol      protocol.Protocol
+	AppliedReasoning      reasoning.Config
+	UpstreamRequestID     string
+	ExecutionError        *execution.ErrorEvidence
 }
 
 func (result UpstreamResult) HasResponse() bool {

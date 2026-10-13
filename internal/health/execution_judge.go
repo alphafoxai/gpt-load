@@ -107,6 +107,18 @@ func JudgeExecution(attempt ExecutionAttempt, decisionContext DecisionContext) D
 			"content.empty_response",
 		), attempt)
 	}
+	if attempt.Evidence.Code == StreamTruncatedBeforeContentCode {
+		// 上游在首个可见增量之前断开，客户端尚未收到任何字符。换一个候选重试
+		// 让用户仍能拿到完整回答；这与空回同样不是凭据故障，因此不冷却、不拉黑。
+		return constrainCommittedDecision(decision(
+			FailureCategoryAmbiguous,
+			execution.ErrorOriginUpstream,
+			execution.ErrorScopeRequest,
+			RetryNextCandidate,
+			EffectNone,
+			"stream.truncated_before_content",
+		), attempt)
+	}
 	if attempt.DispatchState == execution.DispatchNotSent {
 		if result, ok := candidatePreparationDecision(attempt.Evidence); ok {
 			return result

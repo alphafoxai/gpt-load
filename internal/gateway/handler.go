@@ -1493,7 +1493,7 @@ func (handler *Handler) executeAttempts(
 			}
 			return
 		}
-		if result.EmptyResponseBeforeCommit {
+		if result.EmptyResponseBeforeCommit || result.TruncatedBeforeCommit {
 			if decision.Retry != health.RetryNone && forwardAttempts < forwardAttemptLimit {
 				lastEmptyResponse = &deferredAttempt{
 					result:        result,

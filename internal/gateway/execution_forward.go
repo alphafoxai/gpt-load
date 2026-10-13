@@ -254,8 +254,9 @@ func (forwarder *ExecutionForwarder) ForwardStream(
 	// mu 串行化 sink、预读窗口计时器与收尾逻辑：上游静默时，计时器会从另一个
 	// 协程提交压住的数据。
 	var (
-		mu          sync.Mutex
-		windowTimer *time.Timer
+		mu               sync.Mutex
+		windowTimer      *time.Timer
+		windowTimerPhase time.Duration
 	)
 	// commitHeld 把压住的数据照常提交给客户端；调用方需持有 mu。
 	commitHeld := func() {
@@ -356,18 +357,26 @@ func (forwarder *ExecutionForwarder) ForwardStream(
 					errorBody = appendExecutionErrorBody(errorBody, forwardData)
 					return nil
 				}
-				if !streamEvents.producedContent() &&
-					preread.hold(forwardData, streamEvents.eventCount, terminalInChunk, streamEvents.sawTerminal) {
-					// 还没有任何产出，继续压住以保留换候选重试的可能。上游静默时不会再有
-					// 事件触发窗口检查，因此由计时器在窗口到期时主动提交。
-					if windowTimer == nil {
-						windowTimer = time.AfterFunc(preread.window, func() {
-							mu.Lock()
-							defer mu.Unlock()
-							commitHeld()
-						})
+				if !streamEvents.producedVisibleContent() {
+					reasoningOnly := streamEvents.producedContent()
+					if preread.hold(forwardData, streamEvents.eventCount, terminalInChunk, streamEvents.sawTerminal, reasoningOnly) {
+						// 还没有可见产出，继续压住以保留换候选重试的可能。仅推理阶段用
+						// 更宽的窗口，因为首个正文增量之前用户还看不到任何东西。上游静默
+						// 时不会再有事件触发窗口检查，因此由计时器在窗口到期时主动提交。
+						phase := preread.phaseWindow(reasoningOnly)
+						if windowTimer == nil || windowTimerPhase != phase {
+							if windowTimer != nil {
+								windowTimer.Stop()
+							}
+							windowTimerPhase = phase
+							windowTimer = time.AfterFunc(phase, func() {
+								mu.Lock()
+								defer mu.Unlock()
+								commitHeld()
+							})
+						}
+						return nil
 					}
-					return nil
 				}
 				if windowTimer != nil {
 					windowTimer.Stop()
@@ -460,9 +469,9 @@ func (forwarder *ExecutionForwarder) ForwardStream(
 			} else if len(tail) > 0 {
 				if !committed && streamEvents.firstEventWasProviderError() {
 					errorBody = appendExecutionErrorBody(errorBody, tail)
-				} else if !committed && !streamEvents.producedContent() &&
-					preread.hold(tail, streamEvents.eventCount, redactionRestore.TerminalReleased(), streamEvents.sawTerminal) {
-					// EOF 才释放的恢复数据仍须参与空回判定。
+				} else if !committed && !streamEvents.producedVisibleContent() &&
+					preread.hold(tail, streamEvents.eventCount, redactionRestore.TerminalReleased(), streamEvents.sawTerminal, streamEvents.producedContent()) {
+					// EOF 才释放的恢复数据仍须参与空回与截断判定。
 				} else if !committed {
 					held, _ := preread.flush()
 					tail = append(held, tail...)
@@ -497,8 +506,16 @@ func (forwarder *ExecutionForwarder) ForwardStream(
 	emptyResponse := !committed && downstreamErr == nil && terminal.Error == nil &&
 		ready != nil && ready.StatusCode >= http.StatusOK && ready.StatusCode < http.StatusMultipleChoices &&
 		preread.active() && streamEvents.endedWithoutContent()
-	if !emptyResponse {
-		// 不是空回：按关闭开关时的结果把压住的数据照常提交，开关只改变空回的处理。
+	// 上游在首个可见增量之前断开（只产出了推理，或什么都没产出），且响应还
+	// 没提交：客户端一个字节都没收到，换候选重试是安全的。缺终态事件时
+	// validateEOF 会把 downstreamErr 标成协议错误，这里把它降级为可重放的截断。
+	truncatedBeforeCommit := !committed && !emptyResponse &&
+		ready != nil && ready.StatusCode >= http.StatusOK && ready.StatusCode < http.StatusMultipleChoices &&
+		preread.active() && !streamEvents.producedVisibleContent() &&
+		!streamEvents.firstEventWasProviderError() &&
+		errors.Is(downstreamErr, ErrUpstreamProtocol)
+	if !emptyResponse && !truncatedBeforeCommit {
+		// 不是空回也不是可重放截断：把压住的数据照常提交，开关只改变这两者的处理。
 		commitHeld()
 	}
 	capturedUsage := streamEvents.finalizeUsage()
@@ -551,6 +568,24 @@ func (forwarder *ExecutionForwarder) ForwardStream(
 			Code:       health.EmptyResponseCode,
 			Summary:    summary,
 		}
+	} else if truncatedBeforeCommit {
+		// 首个可见增量之前断开。保留原样的推理前导：换候选重试全部失败时，
+		// 仍把上游真实返回的这条截断流交付给客户端，而不是网关错误。证据换成
+		// 专门的截断码，让健康判定允许换一个候选静默重试。
+		summary := fixedErrorSummary(health.StreamTruncatedBeforeContentCode)
+		held, _ := preread.flush()
+		result.TruncatedBeforeCommit = true
+		result.Body = held
+		result.ClassificationBody = append([]byte(nil), held...)
+		result.ErrorSummary = summary
+		result.ExecutionError = &execution.ErrorEvidence{
+			Kind:       execution.ErrorKindProvider,
+			OriginHint: execution.ErrorOriginUpstream,
+			ScopeHint:  execution.ErrorScopeRequest,
+			StatusCode: ready.StatusCode,
+			Code:       health.StreamTruncatedBeforeContentCode,
+			Summary:    summary,
+		}
 	}
 	if !committed && streamEvents.firstEventWasProviderError() {
 		summary := streamEvents.firstSummary
@@ -570,7 +605,7 @@ func (forwarder *ExecutionForwarder) ForwardStream(
 		)
 	}
 	if !committed && result.HasResponse() && !result.ProviderErrorBeforeCommit &&
-		!result.EmptyResponseBeforeCommit {
+		!result.EmptyResponseBeforeCommit && !result.TruncatedBeforeCommit {
 		result = forwarder.prepareBufferedResult(input, result)
 	}
 	return result

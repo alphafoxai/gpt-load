@@ -44,7 +44,7 @@ func (*Anthropic) ClassifyStreamContent(event StreamEvent) StreamContent {
 	case "content_block_start":
 		return StreamContent{Produced: anthropicBlockProducedContent(object.ContentBlock)}
 	case "content_block_delta":
-		return StreamContent{Produced: anthropicDeltaProducedContent(object.Delta)}
+		return anthropicDeltaProducedContent(object.Delta)
 	case "message_delta":
 		var delta struct {
 			StopReason string `json:"stop_reason"`
@@ -215,21 +215,30 @@ func geminiExplainedStop(reason string) bool {
 	}
 }
 
-// anthropicDeltaProducedContent 判定 content_block_delta 是否携带增量产出。
-func anthropicDeltaProducedContent(raw json.RawMessage) bool {
+// anthropicDeltaProducedContent 判定 content_block_delta 的产出与可见性。
+// thinking/redacted 推理是唯一「有产出但不可见」的形态：它先于正文到达，
+// 且不代表用户已经看到任何内容，因此这类截断仍可安全换候选重试。
+func anthropicDeltaProducedContent(raw json.RawMessage) StreamContent {
 	if !producedContentValue(raw) {
-		return false
+		return StreamContent{}
 	}
 	var delta struct {
+		Type        string          `json:"type"`
 		Text        json.RawMessage `json:"text"`
 		Thinking    json.RawMessage `json:"thinking"`
 		PartialJSON json.RawMessage `json:"partial_json"`
 		Data        json.RawMessage `json:"data"`
 	}
 	if json.Unmarshal(raw, &delta) != nil {
-		return false
+		return StreamContent{Produced: true}
 	}
-	return anyProducedContentValue(delta.Text, delta.Thinking, delta.PartialJSON, delta.Data)
+	hidden := delta.Type == "thinking_delta" || delta.Type == "signature_delta"
+	produced := hidden ||
+		anyProducedContentValue(delta.Text, delta.Thinking, delta.PartialJSON, delta.Data)
+	if !produced {
+		return StreamContent{}
+	}
+	return StreamContent{Produced: true, Hidden: hidden}
 }
 
 // geminiPartsProducedContent 判定候选内容中是否存在实际产出的 part。

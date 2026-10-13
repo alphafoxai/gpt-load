@@ -48,11 +48,15 @@ type UsageStreamEventObserver interface {
 	ObserveStreamEvent(event StreamEvent) error
 }
 
-// StreamContent 描述单个流事件对响应产出的贡献，只服务于空回检测。
+// StreamContent 描述单个流事件对响应产出的贡献，只服务于提交前判定。
 type StreamContent struct {
-	// Produced 表示该事件为响应贡献了可见产出（文本、推理、工具调用或其他
+	// Produced 表示该事件为响应贡献了产出（文本、推理、工具调用或其他
 	// 模态）。协议前导、保活与终态事件本身不算产出。
 	Produced bool
+	// Hidden 表示该事件的产出只包含推理/思考这类不会立即呈现给用户的内容。
+	// “尚未有可见产出”的流仍可能在首个正文增量之前被上游截断，此时响应尚未
+	// 提交，换候选重试是安全的。Anthropic 的 thinking 增量是唯一的隐藏产出。
+	Hidden bool
 	// ExplainedStop 表示该事件携带了自然结束以外的终止原因，例如输出预算
 	// 耗尽、内容过滤或拒答。这类原因本身解释了为何没有产出，换候选重试无益。
 	ExplainedStop bool

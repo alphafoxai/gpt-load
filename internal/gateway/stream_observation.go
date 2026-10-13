@@ -60,6 +60,7 @@ type streamEventObserver struct {
 	// content 仅在启用空回检测时挂上；未挂上时不做任何产出判定。
 	content            dialect.StreamContentClassifier
 	sawContent         bool
+	sawVisibleContent  bool
 	sawExplainedStop   bool
 	firstProviderError bool
 	sawErrorEvent      bool
@@ -306,6 +307,7 @@ func (observer *streamEventObserver) classify(
 	if observer.content != nil {
 		content := safeClassifyStreamContent(observer.content, event)
 		observer.sawContent = observer.sawContent || content.Produced
+		observer.sawVisibleContent = observer.sawVisibleContent || (content.Produced && !content.Hidden)
 		observer.sawExplainedStop = observer.sawExplainedStop || content.ExplainedStop
 	}
 	providerError := genericProviderError ||
@@ -321,9 +323,15 @@ func (observer *streamEventObserver) firstEventWasProviderError() bool {
 	return observer != nil && observer.firstProviderError
 }
 
-// producedContent 表示上游已经为本次响应产出了可见内容。
+// producedContent 表示上游已经为本次响应产出了内容，含仅推理的隐藏产出。
 func (observer *streamEventObserver) producedContent() bool {
 	return observer != nil && observer.sawContent
+}
+
+// producedVisibleContent 表示上游已经产出了用户可见的内容（正文、工具调用
+// 或其他模态）。仅推理的隐藏产出不算：那时响应尚未提交，截断仍可安全重试。
+func (observer *streamEventObserver) producedVisibleContent() bool {
+	return observer != nil && observer.sawVisibleContent
 }
 
 // endedWithoutContent 表示流自然结束，但全程没有任何内容产出。预算耗尽、内容
