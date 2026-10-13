@@ -507,13 +507,16 @@ func (forwarder *ExecutionForwarder) ForwardStream(
 		ready != nil && ready.StatusCode >= http.StatusOK && ready.StatusCode < http.StatusMultipleChoices &&
 		preread.active() && streamEvents.endedWithoutContent()
 	// 上游在首个可见增量之前断开（只产出了推理，或什么都没产出），且响应还
-	// 没提交：客户端一个字节都没收到，换候选重试是安全的。缺终态事件时
-	// validateEOF 会把 downstreamErr 标成协议错误，这里把它降级为可重放的截断。
-	truncatedBeforeCommit := !committed && !emptyResponse &&
+	// 没提交：客户端一个字节都没收到，换候选重试是安全的。
+	// 断开会以两种形态到达这里：网关侧缺终态事件（validateEOF 标成 downstreamErr），
+	// 或适配器把断流当成传输错误上报（terminal.Error）。两种都要认，否则生产上
+	// 适配器路径会把可重放的截断当成已提交的协议错误。
+	cutBeforeVisibleContent := !committed && !emptyResponse &&
 		ready != nil && ready.StatusCode >= http.StatusOK && ready.StatusCode < http.StatusMultipleChoices &&
 		preread.active() && !streamEvents.producedVisibleContent() &&
-		!streamEvents.firstEventWasProviderError() &&
-		errors.Is(downstreamErr, ErrUpstreamProtocol)
+		!streamEvents.firstEventWasProviderError()
+	truncatedBeforeCommit := cutBeforeVisibleContent &&
+		(streamTruncationFailure(downstreamErr) || truncationEvidence(terminal.Error))
 	if !emptyResponse && !truncatedBeforeCommit {
 		// 不是空回也不是可重放截断：把压住的数据照常提交，开关只改变这两者的处理。
 		commitHeld()
@@ -1218,6 +1221,31 @@ func preferCapturedStreamUsage(
 		}
 	}
 	return current
+}
+
+// streamTruncationFailure 判定网关侧错误是否表示「上游在流中途断开」。
+// 缺终态事件时 validateEOF 会把它标成 ErrUpstreamProtocol。
+func streamTruncationFailure(err error) bool {
+	return err != nil && errors.Is(err, ErrUpstreamProtocol)
+}
+
+// truncationEvidence 判定适配器上报的终态错误是否属于上游中途断开。适配器把断流
+// 归类为传输错误，或读流期间的 provider 截断。业务错误（HTTP 状态、限流、模型拒绝、
+// 显式 error 事件）都不算，避免把真实拒绝当成可重放截断。
+func truncationEvidence(evidence *execution.ErrorEvidence) bool {
+	if evidence == nil {
+		return false
+	}
+	switch evidence.Kind {
+	case execution.ErrorKindTransport:
+		return true
+	case execution.ErrorKindProvider:
+		switch evidence.Code {
+		case "upstream_stream_terminated", "upstream_sse_error":
+			return true
+		}
+	}
+	return false
 }
 
 func executionStreamObservation(
