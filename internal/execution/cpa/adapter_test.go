@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"mime"
 	"mime/multipart"
@@ -1279,6 +1280,110 @@ func TestAdapterRewritesStreamModelAliasForEveryProtocol(t *testing.T) {
 			})
 			if result.Error != nil || !strings.Contains(wire.String(), "public-model") || strings.Contains(wire.String(), "upstream-model") {
 				t.Fatalf("result = %#v, wire = %q", result, wire.String())
+			}
+		})
+	}
+}
+
+type byteChunkProviderBridge struct {
+	providerBridge
+	chunks <-chan providerStreamChunk
+}
+
+func (bridge byteChunkProviderBridge) ExecuteStream(context.Context, string, providerCredential, providerRequest) (*providerStreamResponse, error) {
+	return &providerStreamResponse{Headers: http.Header{"Content-Type": {"text/event-stream"}}, Chunks: bridge.chunks, RawSSE: true, UpstreamProtocol: protocol.Anthropic}, nil
+}
+
+// Mira 的 HTTP Read 可以把一个合法 SSE JSON 从任意字节处切开；它不是逻辑事件边界。
+func TestAdapterPreservesTransportFragmentedAnthropicStream(t *testing.T) {
+	const original = "event: message_start\r\ndata: {\"type\":\"message_start\",\"message\":{\"model\":\"upstream-model\"}}\r\n\r\n" +
+		"event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"完整答案\"}}\n\n" +
+		"event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+	for _, alias := range []bool{false, true} {
+		t.Run(fmt.Sprintf("alias=%v", alias), func(t *testing.T) {
+			adapter, _, _, service, row := newAdapterFixture(t, credentialJSON("access", "refresh", time.Now().Add(time.Hour)))
+			chunks := make(chan providerStreamChunk, len(original))
+			for i := range []byte(original) {
+				chunks <- providerStreamChunk{Payload: []byte(original[i : i+1])}
+			}
+			close(chunks)
+			adapter.providers[channel.ProviderCodex] = byteChunkProviderBridge{providerBridge: adapter.providers[channel.ProviderCodex], chunks: chunks}
+			spec := validSpec(t, row, service)
+			spec.ClientProtocol, spec.RouteMode = protocol.Anthropic, execution.RouteConverted
+			spec.Operation = execution.OperationChatCompletion
+			spec.Path = "/v1/messages"
+			spec.Body = []byte(`{"model":"upstream-model","max_tokens":64,"messages":[{"role":"user","content":"hello"}]}`)
+			spec.ClientModel, spec.UpstreamModel = "upstream-model", "upstream-model"
+			if alias {
+				spec.ClientModel = "public-model"
+			}
+			var wire bytes.Buffer
+			result := adapter.ExecuteStream(t.Context(), spec, func(event execution.StreamEvent) error {
+				if event.Kind == execution.StreamEventData {
+					wire.Write(event.Data)
+				}
+				return nil
+			})
+			if result.Error != nil {
+				t.Fatalf("transport fragmentation rejected a valid stream: %+v", result.Error)
+			}
+			if !alias {
+				if wire.String() != original {
+					t.Fatalf("transport bytes changed: got %q want %q", wire.String(), original)
+				}
+				return
+			}
+			eventEnd := strings.Index(wire.String(), "\r\n\r\n")
+			originalEnd := strings.Index(original, "\r\n\r\n")
+			if eventEnd < 0 || wire.String()[eventEnd+4:] != original[originalEnd+4:] {
+				t.Fatalf("alias rewrite changed subsequent events: %q", wire.String())
+			}
+			var start struct {
+				Type    string `json:"type"`
+				Message struct {
+					Model string `json:"model"`
+				} `json:"message"`
+			}
+			data := strings.TrimPrefix(wire.String()[:eventEnd], "event: message_start\r\ndata: ")
+			if err := json.Unmarshal([]byte(data), &start); err != nil || start.Type != "message_start" || start.Message.Model != "public-model" {
+				t.Fatalf("fragmented model alias was not restored: %q, %v", data, err)
+			}
+		})
+	}
+}
+
+func TestAdapterAttributesRawSSEFailureToUpstream(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		payload  string
+		wantKind execution.ErrorKind
+	}{
+		{name: "transport cuts inside JSON", payload: "event: content_block_delta\ndata: {\"type\":", wantKind: execution.ErrorKindTransport},
+		{name: "invalid complete JSON event", payload: "event: content_block_delta\ndata: {\"type\":\n\n", wantKind: execution.ErrorKindProvider},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			adapter, _, _, service, row := newAdapterFixture(t, credentialJSON("access", "refresh", time.Now().Add(time.Hour)))
+			chunks := make(chan providerStreamChunk, 1)
+			chunks <- providerStreamChunk{Payload: []byte(tc.payload)}
+			close(chunks)
+			adapter.providers[channel.ProviderCodex] = byteChunkProviderBridge{providerBridge: adapter.providers[channel.ProviderCodex], chunks: chunks}
+			spec := validSpec(t, row, service)
+			spec.ClientProtocol, spec.RouteMode, spec.Operation = protocol.Anthropic, execution.RouteConverted, execution.OperationChatCompletion
+			spec.ClientModel, spec.UpstreamModel = "public-model", "upstream-model"
+			spec.Path = "/v1/messages"
+			spec.Body = []byte(`{"model":"public-model","max_tokens":64,"messages":[{"role":"user","content":"hello"}]}`)
+			var wire bytes.Buffer
+			result := adapter.ExecuteStream(t.Context(), spec, func(event execution.StreamEvent) error {
+				if event.Kind == execution.StreamEventData {
+					wire.Write(event.Data)
+				}
+				return nil
+			})
+			if !result.ResponseStarted || result.StatusCode != http.StatusOK || result.Error == nil || result.Error.Kind != tc.wantKind || wire.Len() != 0 {
+				t.Fatalf("failure misclassified or corrupt event forwarded: result=%+v error=%+v body=%q", result, result.Error, wire.String())
+			}
+			if tc.wantKind == execution.ErrorKindProvider && (result.Error.OriginHint != execution.ErrorOriginUpstream || result.Error.Code != "upstream_protocol_error") {
+				t.Fatalf("invalid complete upstream event blamed local rewrite: %+v", result.Error)
 			}
 		})
 	}

@@ -98,6 +98,12 @@ func TestTruncationBeforeVisibleContent(t *testing.T) {
 			status:   http.StatusOK,
 		},
 		{
+			name:     "malformed complete upstream event is not a transport cut",
+			events:   []string{msgStart, blockTht, thinkDel},
+			terminal: &execution.ErrorEvidence{Kind: execution.ErrorKindProvider, OriginHint: execution.ErrorOriginUpstream, Code: "upstream_protocol_error", ReplaySafety: execution.ReplaySafetyUnknown, Summary: "invalid event JSON"},
+			status:   http.StatusOK,
+		},
+		{
 			name:     "completed thinking is not a truncation",
 			events:   []string{msgStart, blockTht, thinkDel, "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"},
 			terminal: transportErr,

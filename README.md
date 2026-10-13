@@ -120,6 +120,8 @@ Initial setup takes three steps:
 
 **Optional stream retry (`empty_response_retry`, disabled by default).** Enabled groups retry completed empty streams and upstream streams cut before any text, tool, or other non-reasoning output, only while no response bytes have reached the client. Anthropic thinking/redacted-thinking blocks and thinking/signature deltas are buffered for at most 45 seconds from the first buffered byte per attempt, unless output or a buffer limit releases them sooner; retries can add more waiting time and upstream usage. Empty thinking markers do not count as produced content. Explicit error events, explained business stops, request rejection, cancellation, internal failures, and completed streams are not reclassified as truncations. If every candidate truncates, the last raw stream is delivered and logged as `incomplete` / `upstream_stream_truncated`, even with HTTP 200. Once bytes are sent, a later cut cannot be transparently replayed. Request-log `first_response_ms` measures upstream first response, not client first-byte latency.
 
+**Mira streaming compatibility.** HTTP read blocks are reassembled on actual SSE delimiters before model-alias rewriting; network chunk boundaries never add event delimiters. Native and converted streams preserve UTF-8 and tool-argument JSON across split reads. Converted Chat emits `[DONE]` only after an observed Claude `message_stop`, not merely because the upstream connection closed. A partial event at EOF remains an upstream truncation, while a complete malformed event remains a protocol error.
+
 <details>
 <summary>OAuth callback ports for subscription channels</summary>
 

@@ -109,7 +109,7 @@ func replayableStreamFailure(ctx context.Context, downstreamErr error, evidence 
 	}
 	if evidence != nil {
 		if evidence.OriginHint != "" && evidence.OriginHint != execution.ErrorOriginUpstream ||
-			evidence.Hint != "" || evidence.StatusCode >= 300 {
+			evidence.Hint != "" || evidence.StatusCode >= 300 || evidence.Code == "upstream_protocol_error" {
 			return false
 		}
 		switch evidence.Kind {

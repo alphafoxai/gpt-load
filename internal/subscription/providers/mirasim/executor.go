@@ -257,8 +257,20 @@ func translateStream(ctx context.Context, from, to sdktranslator.Format, model s
 				if len(frame) == 0 {
 					continue
 				}
-				if _, err := writer.Write(append(append([]byte(nil), frame...), '\n')); err != nil {
+				if _, err := writer.Write(translatedSSEFrame(frame)); err != nil {
 					return
+				}
+			}
+			// Claude 的 message_stop 是已观察到的成功终态。Chat 转换器本身不发
+			// [DONE]，只在这里映射真实终态，绝不能在普通 EOF 时伪造完成。
+			if from == sdktranslator.FormatClaude && to == sdktranslator.FormatOpenAI && bytes.HasPrefix(line, []byte("data:")) {
+				var event struct {
+					Type string `json:"type"`
+				}
+				if json.Unmarshal(bytes.TrimSpace(line[5:]), &event) == nil && event.Type == "message_stop" {
+					if _, err := writer.Write([]byte("data: [DONE]\n\n")); err != nil {
+						return
+					}
 				}
 			}
 		}
@@ -267,6 +279,17 @@ func translateStream(ctx context.Context, from, to sdktranslator.Format, model s
 		}
 	}()
 	return reader
+}
+
+// translatedSSEFrame 把 SDK 的逻辑 JSON/事件封装成真实 SSE，之后 HTTP 读取可以任意分块。
+func translatedSSEFrame(frame []byte) []byte {
+	frame = bytes.TrimRight(frame, "\r\n")
+	var output []byte
+	if !bytes.HasPrefix(frame, []byte("data:")) && !bytes.HasPrefix(frame, []byte("event:")) && !bytes.HasPrefix(frame, []byte(":")) {
+		output = append(output, "data: "...)
+	}
+	output = append(output, frame...)
+	return append(output, '\n', '\n')
 }
 
 func normalizeBody(body []byte, model string, stream bool, wire sdktranslator.Format, original []byte) ([]byte, error) {

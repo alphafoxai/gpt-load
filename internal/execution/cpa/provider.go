@@ -170,8 +170,11 @@ type providerResponse struct {
 }
 
 type providerStreamResponse struct {
-	Headers                      http.Header
-	Chunks                       <-chan providerStreamChunk
+	Headers http.Header
+	Chunks  <-chan providerStreamChunk
+	// RawSSE 表示 Payload 是任意 HTTP 读取字节，不是完整事件或完整行。
+	// 消费方必须先按原始 SSE 分隔符组帧，不能给读取块补换行。
+	RawSSE                       bool
 	AppliedReasoningEffort       string
 	AppliedReasoningMode         string
 	AppliedReasoningBudgetTokens *int64

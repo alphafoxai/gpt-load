@@ -120,6 +120,8 @@ docker compose exec gpt-load sh -c 'cat /app/data/auth.key'
 
 **可选流式重试（`empty_response_retry`，默认关闭）。** 启用后，正常结束但无产出的空流，以及正文、工具调用或其他非推理产出之前被上游截断的流，可在客户端零字节下发时换候选重试。Anthropic 的 thinking/redacted_thinking 块及 thinking/signature 增量会从每次尝试的首个缓冲字节起最多压住 45 秒；有正文或达到缓冲上限时提前释放。空推理占位不算实际产出。重试可能累加等待时间及上游用量。显式 error 事件、有明确原因的业务终止、业务拒绝、取消、内部错误和已完成流不会被改判为截断。所有候选均截断时仍交付最后一条原始流，即使 HTTP 200，也记录为 `incomplete` / `upstream_stream_truncated`。字节一旦下发，后续断流不能透明重放。日志 `first_response_ms` 表示上游首响，不是客户端首字节延迟。
 
+**Mira 流式兼容。** HTTP 读取块先按真实 SSE 分隔符组帧，再恢复模型别名；网络分块边界不会被追加成事件分隔符。原生与转换流中的 UTF-8 和工具参数 JSON 可以跨读取块。转换到 Chat 时，只有观察到 Claude 的 `message_stop` 才发 `[DONE]`，不能仅因上游连接关闭就伪造完成。EOF 时的半个事件仍归为上游截断，完整但非法的事件仍归为协议错误。
+
 <details>
 <summary>订阅渠道的 OAuth 回调端口</summary>
 

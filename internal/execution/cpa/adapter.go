@@ -396,12 +396,22 @@ func (a *Adapter) ExecuteStream(
 	openAIDone := false
 	geminiTerminal := false
 	var nativeResponsesAssembler *nativeResponsesSSEAssembler
-	if spec.ClientProtocol == protocol.OpenAIResponses && spec.RouteMode == execution.RouteNative {
-		nativeResponsesAssembler = &nativeResponsesSSEAssembler{}
+	if response.RawSSE || spec.ClientProtocol == protocol.OpenAIResponses && spec.RouteMode == execution.RouteNative {
+		nativeResponsesAssembler = &nativeResponsesSSEAssembler{rawSSE: response.RawSSE}
+	}
+	// 原始 HTTP 流在收到响应头时即开始，不必等待首个完整事件才建立上游证据。
+	if response.RawSSE {
+		if err := sink(execution.StreamEvent{Kind: execution.StreamEventReady, Sequence: sequence, StatusCode: http.StatusOK, Header: headers}); err != nil {
+			return streamConsumerStopped(upstreamProtocol, headers, applied, false)
+		}
+		ready = true
 	}
 	emitPayloads := func(payloads [][]byte) *execution.StreamResult {
 		for _, unframed := range payloads {
-			payload := frameSSE(spec.ClientProtocol, unframed)
+			payload := unframed
+			if !response.RawSSE {
+				payload = frameSSE(spec.ClientProtocol, unframed)
+			}
 			if spec.ClientProtocol == protocol.Anthropic && spec.RouteMode == execution.RouteConverted {
 				payload, err = normalizeConvertedAnthropicStartUsage(payload)
 				if err != nil {
@@ -411,6 +421,10 @@ func (a *Adapter) ExecuteStream(
 			}
 			payload, rewriteErr := rewriteStreamModelAlias(spec, payload)
 			if rewriteErr != nil {
+				if response.RawSSE {
+					failure := streamProtocolError(upstreamProtocol, headers, applied, "Upstream SSE event contains invalid response JSON.", ready)
+					return &failure
+				}
 				failure := streamInternalError(upstreamProtocol, headers, applied, "rewrite subscription response model", ready)
 				return &failure
 			}
@@ -437,7 +451,7 @@ func (a *Adapter) ExecuteStream(
 	}
 	for {
 		idleTimeout := spec.Timeouts.StreamIdle
-		if !ready && !upstreamStarted {
+		if !upstreamStarted {
 			idleTimeout = 0
 		}
 		chunk, ok, idleErr := nextChunk(streamCtx, response.Chunks, idleTimeout)
@@ -451,6 +465,9 @@ func (a *Adapter) ExecuteStream(
 			if nativeResponsesAssembler != nil {
 				payloads, finishErr := nativeResponsesAssembler.finish()
 				if finishErr != nil {
+					if response.RawSSE {
+						return streamExecutionError(streamCtx, provider, upstreamProtocol, headers, io.ErrUnexpectedEOF, credential, applied, ready)
+					}
 					return streamInternalError(upstreamProtocol, headers, applied, "invalid subscription SSE stream", ready)
 				}
 				if failure := emitPayloads(payloads); failure != nil {
@@ -460,13 +477,13 @@ func (a *Adapter) ExecuteStream(
 			if !ready {
 				return streamInternalError(upstreamProtocol, headers, applied, "subscription upstream stream ended without data", false)
 			}
-			if spec.ClientProtocol == protocol.OpenAICompletions && !openAIDone {
+			if !response.RawSSE && spec.ClientProtocol == protocol.OpenAICompletions && !openAIDone {
 				sequence++
 				if err := sink(execution.StreamEvent{Kind: execution.StreamEventData, Sequence: sequence, Data: []byte("data: [DONE]\n\n")}); err != nil {
 					return streamConsumerStopped(upstreamProtocol, headers, applied, ready)
 				}
 			}
-			if spec.ClientProtocol == protocol.Gemini && !geminiTerminal {
+			if !response.RawSSE && spec.ClientProtocol == protocol.Gemini && !geminiTerminal {
 				sequence++
 				if err := sink(execution.StreamEvent{Kind: execution.StreamEventData, Sequence: sequence, Data: []byte("data: {\"candidates\":[{\"finishReason\":\"STOP\"}]}\n\n")}); err != nil {
 					return streamConsumerStopped(upstreamProtocol, headers, applied, ready)
@@ -491,6 +508,9 @@ func (a *Adapter) ExecuteStream(
 		if nativeResponsesAssembler != nil {
 			payloads, err = nativeResponsesAssembler.push(chunk.Payload)
 			if err != nil {
+				if response.RawSSE {
+					return streamProtocolError(upstreamProtocol, headers, applied, "Upstream SSE event exceeds the supported size limit.", ready)
+				}
 				return streamInternalError(upstreamProtocol, headers, applied, "invalid subscription SSE stream", ready)
 			}
 		}
@@ -779,6 +799,17 @@ func streamInternalError(
 		UpstreamProtocol: upstreamProtocol, AppliedReasoning: applied, StatusCode: status,
 		Header: headers.Clone(), UpstreamRequestID: upstreamRequestID(headers),
 		Error: &execution.ErrorEvidence{Kind: execution.ErrorKindInternal, Summary: summary},
+	}
+}
+
+// streamProtocolError 保留完整但非法的上游事件归属，不误记为本地模型重写失败。
+func streamProtocolError(upstreamProtocol protocol.Protocol, headers http.Header, applied *reasoning.Config, summary string, responseStarted bool) execution.StreamResult {
+	return execution.StreamResult{
+		DispatchState: execution.DispatchMaybeSent, ResponseStarted: responseStarted, StatusCode: http.StatusOK,
+		UpstreamProtocol: upstreamProtocol, AppliedReasoning: applied, Header: headers.Clone(), UpstreamRequestID: upstreamRequestID(headers),
+		Error: &execution.ErrorEvidence{Kind: execution.ErrorKindProvider, OriginHint: execution.ErrorOriginUpstream,
+			ScopeHint: execution.ErrorScopeRequest,
+			Code:      "upstream_protocol_error", Summary: summary, ReplaySafety: execution.ReplaySafetyUnknown},
 	}
 }
 
