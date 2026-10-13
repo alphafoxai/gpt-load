@@ -1746,8 +1746,10 @@ func (handler *Handler) writeBufferedResponse(
 	return nil
 }
 
-// completeEmptyResponse 把一次判定为空回的尝试原样交付给客户端。重试已经用尽
-// 或被判定为不可重试时，客户端仍应拿到上游真实返回的那条空流，而不是网关错误。
+// completeEmptyResponse 把一次判定为空回或可重放截断的尝试原样交付给客户端。重试
+// 用尽或判定不可重试时，客户端仍应拿到上游真实返回的那条流，而不是网关错误。
+// 截断与空回的区别在于记录：截断意味着上游在终态事件之前断开，客户端拿到的是半截
+// 回答，必须记成 incomplete 并保留原因，不能因为 HTTP 200 就当成成功。
 func (handler *Handler) completeEmptyResponse(
 	ginContext *gin.Context,
 	recorder *requestRecorder,
@@ -1762,7 +1764,11 @@ func (handler *Handler) completeEmptyResponse(
 		result.Header,
 		result.Body,
 	)
-	recorder.completeResponse(result, decision, upstreamModel, attemptIndex)
+	if result.TruncatedBeforeCommit {
+		recorder.completeTruncated(result, decision, upstreamModel, attemptIndex)
+	} else {
+		recorder.completeResponse(result, decision, upstreamModel, attemptIndex)
+	}
 	if writeErr != nil {
 		handler.completeWriteTerminal(ginContext, recorder, result.StatusCode)
 	}
