@@ -12,61 +12,97 @@ import (
 	"gpt-load/internal/protocol"
 )
 
-// The production cut arrives as an ADAPTER-reported terminal error (transport),
-// not as a gateway-side validateEOF failure. Both shapes must be treated as a
-// replayable truncation when no visible content has been produced yet.
-func TestTruncationFromAdapterErrorIsReplayable(t *testing.T) {
+// The production cut arrives as an adapter-reported terminal error, not always as
+// a gateway-side validateEOF failure. Safety comes from the observable state, not
+// the error type: nothing committed, no visible content, 2xx, no error event.
+func TestTruncationBeforeVisibleContent(t *testing.T) {
+	const (
+		msgStart = "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"m\"}}\n\n"
+		blockTht = "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\"}}\n\n"
+		thinkDel = "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"x\"}}\n\n"
+		textDel  = "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"hi\"}}\n\n"
+		errEvent = "event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"overloaded\"}}\n\n"
+	)
+	transportErr := &execution.ErrorEvidence{
+		Kind: execution.ErrorKindTransport, OriginHint: execution.ErrorOriginUpstream,
+		ScopeHint: execution.ErrorScopeRequest, Summary: "read upstream stream: unexpected eof",
+	}
+	denied := &execution.ErrorEvidence{
+		Kind: execution.ErrorKindHTTP, StatusCode: http.StatusForbidden,
+		Hint: execution.FailureHintCandidateUnavailable, Summary: "denied",
+	}
+	overloaded := &execution.ErrorEvidence{
+		Kind: execution.ErrorKindProvider, Code: "overloaded_error",
+		Hint: execution.FailureHintHostError, Summary: "overloaded",
+	}
+
 	for _, tc := range []struct {
-		name     string
-		evidence *execution.ErrorEvidence
-		want     bool
+		name       string
+		events     []string
+		terminal   *execution.ErrorEvidence
+		status     int
+		wantReplay bool
 	}{
 		{
-			name:     "adapter transport error",
-			evidence: &execution.ErrorEvidence{Kind: execution.ErrorKindTransport, OriginHint: execution.ErrorOriginUpstream, ScopeHint: execution.ErrorScopeRequest, Summary: "read upstream stream: unexpected eof"},
-			want:     true,
+			name:       "adapter transport cut after thinking",
+			events:     []string{msgStart, blockTht, thinkDel},
+			terminal:   transportErr,
+			status:     http.StatusOK,
+			wantReplay: true,
 		},
 		{
-			name:     "adapter provider stream terminated",
-			evidence: &execution.ErrorEvidence{Kind: execution.ErrorKindProvider, Code: "upstream_stream_terminated", OriginHint: execution.ErrorOriginUpstream, Summary: "stream terminated"},
-			want:     true,
+			name:       "cut with only preamble, no content at all",
+			events:     []string{msgStart},
+			terminal:   transportErr,
+			status:     http.StatusOK,
+			wantReplay: true,
 		},
 		{
-			name:     "real business rejection must not be replayed",
-			evidence: &execution.ErrorEvidence{Kind: execution.ErrorKindHTTP, StatusCode: http.StatusForbidden, Hint: execution.FailureHintCandidateUnavailable, Summary: "denied"},
-			want:     false,
+			name:       "cut after visible text must NOT replay",
+			events:     []string{msgStart, blockTht, thinkDel, textDel},
+			terminal:   transportErr,
+			status:     http.StatusOK,
+			wantReplay: false,
 		},
 		{
-			name:     "rate limit must not be replayed as truncation",
-			evidence: &execution.ErrorEvidence{Kind: execution.ErrorKindProvider, Code: "rate_limit_exceeded", Hint: execution.FailureHintRateLimited, Summary: "rate limited"},
-			want:     false,
+			name:       "explicit error event must NOT replay",
+			events:     []string{msgStart, blockTht, thinkDel, errEvent},
+			terminal:   overloaded,
+			status:     http.StatusOK,
+			wantReplay: false,
+		},
+		{
+			name:       "business denial must NOT replay",
+			events:     nil,
+			terminal:   denied,
+			status:     http.StatusForbidden,
+			wantReplay: false,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			executor := fakeExecutionExecutor{stream: func(
 				_ context.Context, _ execution.AttemptSpec, sink execution.StreamSink,
 			) execution.StreamResult {
-				for _, e := range []execution.StreamEvent{
-					{Sequence: 1, Kind: execution.StreamEventReady, StatusCode: http.StatusOK,
-						Header: http.Header{"Content-Type": {"text/event-stream"}}},
-					{Sequence: 2, Kind: execution.StreamEventData, Data: []byte(
-						"event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"m\"}}\n\n",
-					)},
-					{Sequence: 3, Kind: execution.StreamEventData, Data: []byte(
-						"event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\"}}\n\n",
-					)},
-					{Sequence: 4, Kind: execution.StreamEventData, Data: []byte(
-						"event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"x\"}}\n\n",
-					)},
-				} {
-					if err := sink(e); err != nil {
-						t.Errorf("sink: %v", err)
+				if tc.status == http.StatusOK {
+					if err := sink(execution.StreamEvent{
+						Sequence: 1, Kind: execution.StreamEventReady, StatusCode: http.StatusOK,
+						Header: http.Header{"Content-Type": {"text/event-stream"}},
+					}); err != nil {
+						t.Errorf("sink ready: %v", err)
+					}
+				}
+				for i, e := range tc.events {
+					if err := sink(execution.StreamEvent{
+						Sequence: uint64(i + 2), Kind: execution.StreamEventData, Data: []byte(e),
+					}); err != nil {
+						t.Errorf("sink data: %v", err)
 					}
 				}
 				return execution.StreamResult{
-					DispatchState: execution.DispatchMaybeSent, ResponseStarted: true,
-					StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}},
-					Error: tc.evidence,
+					DispatchState:   execution.DispatchMaybeSent,
+					ResponseStarted: true, StatusCode: tc.status,
+					Header: http.Header{"Content-Type": {"text/event-stream"}},
+					Error:  tc.terminal,
 				}
 			}}
 			input := executionForwardInput()
@@ -78,10 +114,10 @@ func TestTruncationFromAdapterErrorIsReplayable(t *testing.T) {
 
 			result := NewExecutionForwarder(executor).ForwardStream(context.Background(), input, recorder)
 			t.Logf("committed=%v truncated=%v bodyLen=%d", result.Committed, result.TruncatedBeforeCommit, recorder.Body.Len())
-			if result.TruncatedBeforeCommit != tc.want {
-				t.Errorf("TruncatedBeforeCommit = %v, want %v", result.TruncatedBeforeCommit, tc.want)
+			if result.TruncatedBeforeCommit != tc.wantReplay {
+				t.Fatalf("TruncatedBeforeCommit = %v, want %v", result.TruncatedBeforeCommit, tc.wantReplay)
 			}
-			if tc.want {
+			if tc.wantReplay {
 				if result.Committed {
 					t.Errorf("committed a replayable truncation")
 				}
