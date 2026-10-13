@@ -62,6 +62,10 @@ export default {
   shell: {
     refresh: 'Refresh',
     refreshedAt: 'Updated {time}',
+    autoRefresh: 'Auto refresh',
+    autoRefreshOff: 'Off',
+    autoRefreshSeconds: '{count}s',
+    autoRefreshMinutes: '{count} min',
     importCredentials: 'Import credentials',
     goHome: 'GPT-Load overview',
     mascotHint:
@@ -102,6 +106,8 @@ export default {
     readOnly: 'Access key · Read-only',
     readOnlyDescription:
       'View only this key’s overview, models, usage, and request history. System configuration cannot be changed.',
+    requestBodyRecordingNotice:
+      'An administrator has enabled request body recording for this access key. Content you send with it is kept for {days} days and can be viewed by administrators and anyone who holds this key. Do not send anything you do not want recorded with this key.',
     help: {
       title: 'Which key can I use?',
       accessKeyTitle: 'Access key',
