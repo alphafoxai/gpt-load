@@ -1359,7 +1359,7 @@ func TestAdapterAttributesRawSSEFailureToUpstream(t *testing.T) {
 		wantKind execution.ErrorKind
 	}{
 		{name: "transport cuts inside JSON", payload: "event: content_block_delta\ndata: {\"type\":", wantKind: execution.ErrorKindTransport},
-		{name: "invalid complete JSON event", payload: "event: content_block_delta\ndata: {\"type\":\n\n", wantKind: execution.ErrorKindProvider},
+		{name: "invalid complete JSON event", payload: "event: message_start\ndata: {\"type\":\"message_start\",\"message\":1}\n\n", wantKind: execution.ErrorKindProvider},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			adapter, _, _, service, row := newAdapterFixture(t, credentialJSON("access", "refresh", time.Now().Add(time.Hour)))
@@ -1386,6 +1386,30 @@ func TestAdapterAttributesRawSSEFailureToUpstream(t *testing.T) {
 				t.Fatalf("invalid complete upstream event blamed local rewrite: %+v", result.Error)
 			}
 		})
+	}
+}
+
+func TestAdapterKeepsStreamAfterRawEventWithoutModel(t *testing.T) {
+	adapter, _, _, service, row := newAdapterFixture(t, credentialJSON("access", "refresh", time.Now().Add(time.Hour)))
+	chunks := make(chan providerStreamChunk, 2)
+	chunks <- providerStreamChunk{Payload: []byte("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"hidden\"}}\n\n")}
+	chunks <- providerStreamChunk{Payload: []byte("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"ok\"}}\n\n")}
+	close(chunks)
+	adapter.providers[channel.ProviderCodex] = byteChunkProviderBridge{providerBridge: adapter.providers[channel.ProviderCodex], chunks: chunks}
+	spec := validSpec(t, row, service)
+	spec.ClientProtocol, spec.RouteMode, spec.Operation = protocol.Anthropic, execution.RouteConverted, execution.OperationChatCompletion
+	spec.ClientModel, spec.UpstreamModel = "public-model", "upstream-model"
+	spec.Path = "/v1/messages"
+	spec.Body = []byte(`{"model":"public-model","max_tokens":64,"messages":[{"role":"user","content":"hello"}]}`)
+	var wire bytes.Buffer
+	result := adapter.ExecuteStream(t.Context(), spec, func(event execution.StreamEvent) error {
+		if event.Kind == execution.StreamEventData {
+			wire.Write(event.Data)
+		}
+		return nil
+	})
+	if result.Error != nil || !strings.Contains(wire.String(), `"text":"ok"`) || !strings.Contains(wire.String(), `"thinking":"hidden"`) {
+		t.Fatalf("model-free event stopped a later delta: %+v body=%q", result.Error, wire.String())
 	}
 }
 

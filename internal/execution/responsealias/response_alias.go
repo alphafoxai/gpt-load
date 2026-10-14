@@ -4,6 +4,7 @@ package responsealias
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 
 	"gpt-load/internal/dialect"
@@ -104,6 +105,12 @@ func rewriteSSEEvent(clientProtocol protocol.Protocol, event []byte, clientModel
 	if len(payload) == 0 || bytes.Equal(bytes.TrimSpace(payload), []byte("[DONE]")) {
 		return bytes.Clone(event), nil
 	}
+	if !json.Valid(payload) {
+		return nil, fmt.Errorf("rewrite response model: invalid event JSON")
+	}
+	if !sseEventCarriesModel(payload) {
+		return bytes.Clone(event), nil
+	}
 	rewritten, err := RewriteJSON(clientProtocol, payload, clientModel)
 	if err != nil {
 		return nil, err
@@ -194,4 +201,19 @@ func parseSSEDataLine(line []byte) (bool, []byte) {
 		return false, nil
 	}
 	return true, value
+}
+
+// sseEventCarriesModel reports whether a valid JSON object can carry a provider
+// model id. Deltas without one pass through unchanged.
+func sseEventCarriesModel(payload []byte) bool {
+	var object map[string]json.RawMessage
+	if json.Unmarshal(payload, &object) != nil || object == nil {
+		return false
+	}
+	for _, field := range []string{"model", "modelVersion", "response", "message"} {
+		if _, exists := object[field]; exists {
+			return true
+		}
+	}
+	return false
 }
