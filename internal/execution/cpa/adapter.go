@@ -392,6 +392,7 @@ func (a *Adapter) ExecuteStream(
 	headers := subscriptionResponseHeaders(response.Headers, "text/event-stream")
 	sequence := uint64(1)
 	ready := false
+	delivered := false
 	upstreamStarted := false
 	openAIDone := false
 	geminiTerminal := false
@@ -421,6 +422,9 @@ func (a *Adapter) ExecuteStream(
 			}
 			payload, rewriteErr := rewriteStreamModelAlias(spec, payload)
 			if rewriteErr != nil {
+				if delivered {
+					continue
+				}
 				if response.RawSSE {
 					failure := streamProtocolError(upstreamProtocol, headers, applied, "Upstream SSE event contains invalid response JSON.", ready)
 					return &failure
@@ -446,6 +450,7 @@ func (a *Adapter) ExecuteStream(
 				failure := streamConsumerStopped(upstreamProtocol, headers, applied, ready)
 				return &failure
 			}
+			delivered = true
 		}
 		return nil
 	}
@@ -798,18 +803,22 @@ func streamInternalError(
 		DispatchState: execution.DispatchMaybeSent, ResponseStarted: responseStarted,
 		UpstreamProtocol: upstreamProtocol, AppliedReasoning: applied, StatusCode: status,
 		Header: headers.Clone(), UpstreamRequestID: upstreamRequestID(headers),
-		Error: &execution.ErrorEvidence{Kind: execution.ErrorKindInternal, Summary: summary},
+		Error: &execution.ErrorEvidence{Kind: execution.ErrorKindInternal, StatusCode: status, Summary: summary},
 	}
 }
 
 // streamProtocolError 保留完整但非法的上游事件归属，不误记为本地模型重写失败。
 func streamProtocolError(upstreamProtocol protocol.Protocol, headers http.Header, applied *reasoning.Config, summary string, responseStarted bool) execution.StreamResult {
+	status := 0
+	if responseStarted {
+		status = http.StatusOK
+	}
 	return execution.StreamResult{
-		DispatchState: execution.DispatchMaybeSent, ResponseStarted: responseStarted, StatusCode: http.StatusOK,
+		DispatchState: execution.DispatchMaybeSent, ResponseStarted: responseStarted, StatusCode: status,
 		UpstreamProtocol: upstreamProtocol, AppliedReasoning: applied, Header: headers.Clone(), UpstreamRequestID: upstreamRequestID(headers),
 		Error: &execution.ErrorEvidence{Kind: execution.ErrorKindProvider, OriginHint: execution.ErrorOriginUpstream,
-			ScopeHint: execution.ErrorScopeRequest,
-			Code:      "upstream_protocol_error", Summary: summary, ReplaySafety: execution.ReplaySafetyUnknown},
+			ScopeHint: execution.ErrorScopeRequest, StatusCode: status,
+			Code: "upstream_protocol_error", Summary: summary, ReplaySafety: execution.ReplaySafetyUnknown},
 	}
 }
 
@@ -827,7 +836,7 @@ func streamConsumerStopped(
 		DispatchState: execution.DispatchMaybeSent, ResponseStarted: responseStarted,
 		UpstreamProtocol: upstreamProtocol, AppliedReasoning: applied, StatusCode: status,
 		Header: headers.Clone(), UpstreamRequestID: upstreamRequestID(headers),
-		Error: &execution.ErrorEvidence{Kind: execution.ErrorKindCanceled, Summary: "stream consumer stopped"},
+		Error: &execution.ErrorEvidence{Kind: execution.ErrorKindCanceled, StatusCode: status, Summary: "stream consumer stopped"},
 	}
 }
 

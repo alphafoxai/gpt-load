@@ -1413,6 +1413,31 @@ func TestAdapterKeepsStreamAfterRawEventWithoutModel(t *testing.T) {
 	}
 }
 
+func TestAdapterSkipsUnrewritableEventAfterOutput(t *testing.T) {
+	adapter, _, _, service, row := newAdapterFixture(t, credentialJSON("access", "refresh", time.Now().Add(time.Hour)))
+	chunks := make(chan providerStreamChunk, 3)
+	chunks <- providerStreamChunk{Payload: []byte("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"ok\"}}\n\n")}
+	chunks <- providerStreamChunk{Payload: []byte("event: message_start\ndata: {\"type\":\"message_start\",\"message\":1}\n\n")}
+	chunks <- providerStreamChunk{Payload: []byte("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")}
+	close(chunks)
+	adapter.providers[channel.ProviderCodex] = byteChunkProviderBridge{providerBridge: adapter.providers[channel.ProviderCodex], chunks: chunks}
+	spec := validSpec(t, row, service)
+	spec.ClientProtocol, spec.RouteMode, spec.Operation = protocol.Anthropic, execution.RouteConverted, execution.OperationChatCompletion
+	spec.ClientModel, spec.UpstreamModel = "public-model", "upstream-model"
+	spec.Path = "/v1/messages"
+	spec.Body = []byte(`{"model":"public-model","max_tokens":64,"messages":[{"role":"user","content":"hello"}]}`)
+	var wire bytes.Buffer
+	result := adapter.ExecuteStream(t.Context(), spec, func(event execution.StreamEvent) error {
+		if event.Kind == execution.StreamEventData {
+			wire.Write(event.Data)
+		}
+		return nil
+	})
+	if result.Error != nil || !strings.Contains(wire.String(), `"text":"ok"`) || !strings.Contains(wire.String(), "message_stop") || strings.Contains(wire.String(), `"message":1`) {
+		t.Fatalf("later terminal was dropped with the bad event: %+v body=%q", result.Error, wire.String())
+	}
+}
+
 func TestAdapterReportsFinalCPAResponsesReasoning(t *testing.T) {
 	tests := []struct {
 		name       string
