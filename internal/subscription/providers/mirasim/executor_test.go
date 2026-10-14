@@ -205,3 +205,27 @@ func TestTranslatedClaudeStreamHasRealSSEBoundaries(t *testing.T) {
 		}
 	}
 }
+
+func TestTranslatedResponsesStreamMapsCompletedToChatDONE(t *testing.T) {
+	input := "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"OK\"}\n\n" +
+		"event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}}\n\n"
+	reader := translateStream(context.Background(), sdktranslator.FormatCodex, sdktranslator.FormatOpenAI, "gpt-6-astra", []byte(`{}`), []byte(`{}`), io.NopCloser(strings.NewReader(input)))
+	defer reader.Close()
+	wire, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(wire, []byte("data: [DONE]")) {
+		t.Fatalf("Responses completed was not mapped to Chat DONE: %q", wire)
+	}
+	truncated := "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"OK\"}\n\n"
+	reader = translateStream(context.Background(), sdktranslator.FormatCodex, sdktranslator.FormatOpenAI, "gpt-6-astra", []byte(`{}`), []byte(`{}`), io.NopCloser(strings.NewReader(truncated)))
+	defer reader.Close()
+	wire, err = io.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(wire, []byte("data: [DONE]")) {
+		t.Fatalf("truncated Responses stream forged DONE: %q", wire)
+	}
+}

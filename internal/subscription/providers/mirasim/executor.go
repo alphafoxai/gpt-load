@@ -245,6 +245,7 @@ func translateStream(ctx context.Context, from, to sdktranslator.Format, model s
 			return
 		}
 		var state any
+		wroteChatDone := false
 		scanner := bufio.NewScanner(input)
 		scanner.Buffer(make([]byte, 0, 64*1024), maxCodexEventBytes)
 		for scanner.Scan() {
@@ -257,20 +258,23 @@ func translateStream(ctx context.Context, from, to sdktranslator.Format, model s
 				if len(frame) == 0 {
 					continue
 				}
-				if _, err := writer.Write(translatedSSEFrame(frame)); err != nil {
+				wired := translatedSSEFrame(frame)
+				if _, err := writer.Write(wired); err != nil {
 					return
 				}
+				if to == sdktranslator.FormatOpenAI && bytes.Contains(wired, []byte("data: [DONE]")) {
+					wroteChatDone = true
+				}
 			}
-			// Claude 的 message_stop 是已观察到的成功终态。Chat 转换器本身不发
-			// [DONE]，只在这里映射真实终态，绝不能在普通 EOF 时伪造完成。
-			if from == sdktranslator.FormatClaude && to == sdktranslator.FormatOpenAI && bytes.HasPrefix(line, []byte("data:")) {
+			if to == sdktranslator.FormatOpenAI && !wroteChatDone && bytes.HasPrefix(line, []byte("data:")) {
 				var event struct {
 					Type string `json:"type"`
 				}
-				if json.Unmarshal(bytes.TrimSpace(line[5:]), &event) == nil && event.Type == "message_stop" {
+				if json.Unmarshal(bytes.TrimSpace(line[5:]), &event) == nil && isObservedChatSuccessTerminal(event.Type) {
 					if _, err := writer.Write([]byte("data: [DONE]\n\n")); err != nil {
 						return
 					}
+					wroteChatDone = true
 				}
 			}
 		}
@@ -279,6 +283,15 @@ func translateStream(ctx context.Context, from, to sdktranslator.Format, model s
 		}
 	}()
 	return reader
+}
+
+func isObservedChatSuccessTerminal(eventType string) bool {
+	switch eventType {
+	case "message_stop", "response.completed", "response.incomplete":
+		return true
+	default:
+		return false
+	}
 }
 
 // translatedSSEFrame 把 SDK 的逻辑 JSON/事件封装成真实 SSE，之后 HTTP 读取可以任意分块。
