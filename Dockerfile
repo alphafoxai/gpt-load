@@ -21,7 +21,8 @@ ARG TARGETARCH
 # 默认的逗号只在 404/410 时回退，模块代理瞬时故障会直接中断构建。
 ENV GO111MODULE=on \
     CGO_ENABLED=0 \
-    GOPROXY="https://proxy.golang.org|direct"
+    GOPROXY=https://proxy.golang.org|https://goproxy.cn \
+    GOSUMDB=sum.golang.org
 
 WORKDIR /build
 
