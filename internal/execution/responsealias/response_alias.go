@@ -58,6 +58,103 @@ func RewriteSSE(clientProtocol protocol.Protocol, data []byte, clientModel strin
 	return output.Bytes(), nil
 }
 
+// StripUnrewritableModel drops model identifiers from a complete SSE event that
+// could not be rewritten to the client model. Invalid JSON is not forwarded.
+func StripUnrewritableModel(_ protocol.Protocol, data []byte) ([]byte, bool) {
+	var output bytes.Buffer
+	remaining := data
+	forwarded := false
+	for len(remaining) > 0 {
+		index, delimiterLength := firstSSEDelimiter(remaining)
+		event := remaining
+		if index >= 0 {
+			event = remaining[:index+delimiterLength]
+			remaining = remaining[index+delimiterLength:]
+		} else {
+			remaining = nil
+		}
+		stripped, ok := stripSSEEventModel(event)
+		if !ok {
+			continue
+		}
+		_, _ = output.Write(stripped)
+		forwarded = true
+	}
+	if !forwarded {
+		return nil, false
+	}
+	return output.Bytes(), true
+}
+
+func stripSSEEventModel(event []byte) ([]byte, bool) {
+	lines := splitSSELines(event)
+	dataValues := make([][]byte, 0, 1)
+	firstDataLine := -1
+	for index := range lines {
+		if !lines[index].isData {
+			continue
+		}
+		if firstDataLine < 0 {
+			firstDataLine = index
+		}
+		dataValues = append(dataValues, lines[index].data)
+	}
+	if firstDataLine < 0 {
+		return bytes.Clone(event), true
+	}
+	payload := bytes.Join(dataValues, []byte{'\n'})
+	if len(payload) == 0 || bytes.Equal(bytes.TrimSpace(payload), []byte("[DONE]")) {
+		return bytes.Clone(event), true
+	}
+	var object map[string]json.RawMessage
+	if json.Unmarshal(payload, &object) != nil || object == nil {
+		return nil, false
+	}
+	delete(object, "model")
+	delete(object, "modelVersion")
+	if raw, exists := object["response"]; exists {
+		var nested map[string]json.RawMessage
+		if json.Unmarshal(raw, &nested) != nil {
+			delete(object, "response")
+		} else {
+			delete(nested, "model")
+			if encoded, err := json.Marshal(nested); err == nil {
+				object["response"] = encoded
+			}
+		}
+	}
+	if raw, exists := object["message"]; exists {
+		var nested map[string]json.RawMessage
+		if json.Unmarshal(raw, &nested) != nil {
+			delete(object, "message")
+		} else {
+			delete(nested, "model")
+			if encoded, err := json.Marshal(nested); err == nil {
+				object["message"] = encoded
+			}
+		}
+	}
+	rewritten, err := json.Marshal(object)
+	if err != nil {
+		return nil, false
+	}
+	var output bytes.Buffer
+	for index, line := range lines {
+		switch {
+		case index == firstDataLine:
+			_, _ = output.WriteString("data: ")
+			_, _ = output.Write(rewritten)
+			_, _ = output.Write(line.terminator)
+		case line.isData:
+			continue
+		default:
+			_, _ = output.Write(line.content)
+			_, _ = output.Write(line.terminator)
+		}
+	}
+	return output.Bytes(), true
+}
+
 func modelRewriter(clientProtocol protocol.Protocol) (dialect.ModelRewriter, error) {
 	switch clientProtocol {
 	case protocol.OpenAICompletions:

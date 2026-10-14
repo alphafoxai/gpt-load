@@ -61,3 +61,16 @@ func TestRewriteSSEPassesEventsWithoutModelAndRejectsBrokenModelJSON(t *testing.
 		t.Fatal("broken model JSON was forwarded with the upstream model")
 	}
 }
+
+func TestStripUnrewritableModelDropsModelAndKeepsTerminal(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("data: {\"type\":\"response.completed\",\"response\":{\"model\":\"upstream-model\",\"status\":\"completed\"}}\n\n")
+	got, ok := StripUnrewritableModel(protocol.OpenAIResponses, input)
+	if !ok || bytes.Contains(got, []byte("upstream-model")) || !bytes.Contains(got, []byte(`"status":"completed"`)) {
+		t.Fatalf("stripped = %q ok=%v", got, ok)
+	}
+	if _, ok := StripUnrewritableModel(protocol.Anthropic, []byte("data: {\"type\":\n\n")); ok {
+		t.Fatal("invalid JSON was forwarded")
+	}
+}

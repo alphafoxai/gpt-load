@@ -1438,6 +1438,30 @@ func TestAdapterSkipsUnrewritableEventAfterOutput(t *testing.T) {
 	}
 }
 
+func TestAdapterForwardsStrippedTerminalAfterOutput(t *testing.T) {
+	adapter, _, _, service, row := newAdapterFixture(t, credentialJSON("access", "refresh", time.Now().Add(time.Hour)))
+	chunks := make(chan providerStreamChunk, 2)
+	chunks <- providerStreamChunk{Payload: []byte("data: {\"id\":\"chatcmpl_1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n")}
+	chunks <- providerStreamChunk{Payload: []byte("data: {\"model\":1,\"choices\":[{\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n")}
+	close(chunks)
+	adapter.providers[channel.ProviderCodex] = byteChunkProviderBridge{providerBridge: adapter.providers[channel.ProviderCodex], chunks: chunks}
+	spec := validSpec(t, row, service)
+	spec.ClientProtocol, spec.RouteMode, spec.Operation = protocol.OpenAICompletions, execution.RouteConverted, execution.OperationChatCompletion
+	spec.ClientModel, spec.UpstreamModel = "mira/gpt-6-astra", "gpt-6-astra"
+	spec.Path = "/v1/chat/completions"
+	spec.Body = []byte(`{"model":"mira/gpt-6-astra","stream":true,"messages":[{"role":"user","content":"hello"}]}`)
+	var wire bytes.Buffer
+	result := adapter.ExecuteStream(t.Context(), spec, func(event execution.StreamEvent) error {
+		if event.Kind == execution.StreamEventData {
+			wire.Write(event.Data)
+		}
+		return nil
+	})
+	if result.Error != nil || !strings.Contains(wire.String(), `"content":"ok"`) || !strings.Contains(wire.String(), "data: [DONE]") || strings.Contains(wire.String(), `"model":1`) {
+		t.Fatalf("chat terminal was dropped: %+v body=%q", result.Error, wire.String())
+	}
+}
+
 func TestAdapterReportsFinalCPAResponsesReasoning(t *testing.T) {
 	tests := []struct {
 		name       string

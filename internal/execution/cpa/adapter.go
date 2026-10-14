@@ -423,14 +423,18 @@ func (a *Adapter) ExecuteStream(
 			payload, rewriteErr := rewriteStreamModelAlias(spec, payload)
 			if rewriteErr != nil {
 				if delivered {
-					continue
-				}
-				if response.RawSSE {
+					sanitized, ok := responsealias.StripUnrewritableModel(spec.ClientProtocol, payload)
+					if !ok {
+						continue
+					}
+					payload = sanitized
+				} else if response.RawSSE {
 					failure := streamProtocolError(upstreamProtocol, headers, applied, "Upstream SSE event contains invalid response JSON.", ready)
 					return &failure
+				} else {
+					failure := streamInternalError(upstreamProtocol, headers, applied, "rewrite subscription response model", ready)
+					return &failure
 				}
-				failure := streamInternalError(upstreamProtocol, headers, applied, "rewrite subscription response model", ready)
-				return &failure
 			}
 			if spec.ClientProtocol == protocol.OpenAICompletions && isOpenAIDone(payload) {
 				openAIDone = true
