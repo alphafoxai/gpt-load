@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -227,5 +228,57 @@ func TestTranslatedResponsesStreamMapsCompletedToChatDONE(t *testing.T) {
 	}
 	if bytes.Contains(wire, []byte("data: [DONE]")) {
 		t.Fatalf("truncated Responses stream forged DONE: %q", wire)
+	}
+}
+
+func TestBuildProviderRequestCompletesAstraJSONSchemaRequired(t *testing.T) {
+	schema := `{"type":"object","properties":{"answer":{"type":"string"},"impossible":{"type":"boolean"}},"required":["answer"],"additionalProperties":false}`
+	body, route, err := buildProviderRequest(ExecuteRequest{
+		Model: "gpt-6-astra", Format: "openai-response",
+		Payload: []byte(`{"model":"gpt-6-astra","input":"hi","text":{"format":{"type":"json_schema","name":"response","strict":true,"schema":` + schema + `}}}`),
+	}, true)
+	if err != nil || route.Path != "/v1/responses" {
+		t.Fatalf("route = %#v err=%v", route, err)
+	}
+	assertAstraSchemaRequired(t, body)
+
+	chatBody, chatRoute, err := buildProviderRequest(ExecuteRequest{
+		Model: "gpt-6-astra", Format: "openai",
+		Payload: []byte(`{"model":"gpt-6-astra","messages":[{"role":"user","content":"hi"}],"response_format":{"type":"json_schema","json_schema":{"name":"response","strict":true,"schema":` + schema + `}}}`),
+	}, true)
+	if err != nil || chatRoute.Path != "/v1/responses" {
+		t.Fatalf("chat route = %#v err=%v", chatRoute, err)
+	}
+	assertAstraSchemaRequired(t, chatBody)
+
+	claudeBody, claudeRoute, err := buildProviderRequest(ExecuteRequest{
+		Model: "claude-opus-5-5", Format: "claude",
+		Payload: []byte(`{"model":"claude-opus-5-5","max_tokens":16,"messages":[{"role":"user","content":"hi"}],"output_config":{"format":{"type":"json_schema","schema":` + schema + `}}}`),
+	}, false)
+	if err != nil || claudeRoute.Path != "/v1/messages" {
+		t.Fatalf("claude route = %#v err=%v", claudeRoute, err)
+	}
+	var claude map[string]any
+	if err := json.Unmarshal(claudeBody, &claude); err != nil {
+		t.Fatal(err)
+	}
+	output, _ := claude["output_config"].(map[string]any)
+	format, _ := output["format"].(map[string]any)
+	if !reflect.DeepEqual(stringSlice(format["schema"].(map[string]any)["required"]), []string{"answer"}) {
+		t.Fatalf("claude schema was rewritten: %s", claudeBody)
+	}
+}
+
+func assertAstraSchemaRequired(t *testing.T, body []byte) {
+	t.Helper()
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatal(err)
+	}
+	text, _ := payload["text"].(map[string]any)
+	format, _ := text["format"].(map[string]any)
+	schema, _ := format["schema"].(map[string]any)
+	if !reflect.DeepEqual(stringSlice(schema["required"]), []string{"answer", "impossible"}) {
+		t.Fatalf("required = %#v body=%s", schema["required"], body)
 	}
 }

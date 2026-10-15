@@ -319,6 +319,7 @@ func normalizeBody(body []byte, model string, stream bool, wire sdktranslator.Fo
 		applyBuiltinEffort(payload, model, original)
 	} else {
 		payload["stream"] = true
+		applyCodexStructuredOutput(payload)
 	}
 	updated, err := json.Marshal(payload)
 	if err != nil {
