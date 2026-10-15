@@ -75,10 +75,17 @@ func TestParseMapsSupportedExports(t *testing.T) {
 }
 
 func TestParseKeepsMirasimCPAFile(t *testing.T) {
-	raw := `{"type":"mirasim","access_token":"access","refresh_token":"refresh","device_private_key":"-----BEGIN PRIVATE KEY-----\nkey\n-----END PRIVATE KEY-----\n"}`
+	raw := `{"type":"mirasim","access_token":"access","refresh_token":"refresh","device_private_key":"-----BEGIN PRIVATE KEY-----\\nkey\\n-----END PRIVATE KEY-----\n","client_id":"untrusted","proxy_url":"http://untrusted.invalid"}`
 	entry := parseOne(t, raw)
 	if entry.Format != "cpa" || entry.ChannelID != channel.Mirasim || entry.ErrorCode != "" {
 		t.Fatalf("entry = %#v", entry)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(entry.Credential, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["refresh_token"] != "refresh" || got["device_private_key"] == nil || got["proxy_url"] != nil || got["client_id"] != nil {
+		t.Fatalf("mirasim projection = %#v", got)
 	}
 }
 

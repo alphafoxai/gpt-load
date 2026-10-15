@@ -20,6 +20,10 @@ var cpaImportFields = map[channel.ID][]string{
 		"type", "access_token", "refresh_token", "id_token", "account_id", "sub", "email",
 		"token_type", "expires_in", "expired", "last_refresh", "token_endpoint", "auth_kind",
 	},
+	channel.Mirasim: {
+		"type", "access_token", "refresh_token", "device_private_key", "expired", "last_refresh",
+		"relay_url", "admin_url", "client_version",
+	},
 }
 
 func mapCPA(object map[string]any, channelID channel.ID) (map[string]any, string) {

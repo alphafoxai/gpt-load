@@ -463,6 +463,8 @@ func (m *mapper) validateClient(source map[string]any, channelID channel.ID) {
 		expected = "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com"
 	case channel.Grok:
 		expected = "b1a00492-073a-47ea-816f-4c329264a828"
+	default:
+		return
 	}
 	if client != "" && client != expected {
 		m.fail("unsupported_client")
