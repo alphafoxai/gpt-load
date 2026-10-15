@@ -509,6 +509,9 @@ func (a *Adapter) ExecuteStream(
 			return successfulStreamTerminal(upstreamProtocol, modelObserver.Model, headers, applied)
 		}
 		if chunk.Err != nil {
+			if failure := completeConvertedChatStreamOnUpstreamError(spec, response, sink, &sequence, &openAIDone, ready, delivered, upstreamProtocol, headers, applied); failure != nil {
+				return *failure
+			}
 			return streamExecutionError(streamCtx, provider, upstreamProtocol, headers, chunk.Err, credential, applied, ready)
 		}
 		if len(chunk.Payload) == 0 && nativeResponsesAssembler == nil {
@@ -941,6 +944,41 @@ func notSentEvidence(kind execution.ErrorKind, summary, code string) *execution.
 		evidence.OriginHint = execution.ErrorOriginInternal
 	}
 	return evidence
+}
+
+// completeConvertedChatStreamOnUpstreamError 在 Chat Completions 已开始下发后，
+// 上游提前掐流时补一条 SSE 错误和 [DONE]。否则客户端只会看到 unexpected EOF。
+func completeConvertedChatStreamOnUpstreamError(
+	spec execution.AttemptSpec,
+	response *providerStreamResponse,
+	sink execution.StreamSink,
+	sequence *uint64,
+	openAIDone *bool,
+	ready bool,
+	delivered bool,
+	upstreamProtocol protocol.Protocol,
+	headers http.Header,
+	applied *reasoning.Config,
+) *execution.StreamResult {
+	if response == nil || response.RawSSE || !ready || !delivered || openAIDone == nil || *openAIDone {
+		return nil
+	}
+	if spec.ClientProtocol != protocol.OpenAICompletions {
+		return nil
+	}
+	*sequence++
+	errorEvent := []byte(`data: {"error":{"message":"AlphaFox: connection lost mid-reply (unexpected EOF)","type":"api_error","code":"upstream_stream_truncated"}}` + "\n\n")
+	if err := sink(execution.StreamEvent{Kind: execution.StreamEventData, Sequence: *sequence, Data: errorEvent}); err != nil {
+		failure := streamConsumerStopped(upstreamProtocol, headers, applied, ready)
+		return &failure
+	}
+	*sequence++
+	if err := sink(execution.StreamEvent{Kind: execution.StreamEventData, Sequence: *sequence, Data: []byte("data: [DONE]\n\n")}); err != nil {
+		failure := streamConsumerStopped(upstreamProtocol, headers, applied, ready)
+		return &failure
+	}
+	*openAIDone = true
+	return nil
 }
 
 func successfulStreamTerminal(

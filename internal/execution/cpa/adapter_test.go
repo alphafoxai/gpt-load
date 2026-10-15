@@ -1129,6 +1129,35 @@ func TestAdapterSkipsEmptyChunksOutsideNativeResponsesFraming(t *testing.T) {
 	}
 }
 
+func TestAdapterCompletesConvertedChatStreamAfterUpstreamEOF(t *testing.T) {
+	adapter, _, _, keyService, row := newAdapterFixture(t, credentialJSON("access", "refresh", time.Now().Add(time.Hour)))
+	chunks := make(chan codex.ExecuteStreamChunk, 2)
+	chunks <- codex.ExecuteStreamChunk{Payload: []byte(`{"id":"chat_1","choices":[{"delta":{"content":"hi"}}]}`)}
+	chunks <- codex.ExecuteStreamChunk{Err: io.ErrUnexpectedEOF}
+	close(chunks)
+	setCodexExecutor(t, adapter, &fakeExecutor{stream: &codex.ExecuteStreamResponse{Chunks: chunks}})
+	spec := validSpec(t, row, keyService)
+	spec.ClientProtocol = protocol.OpenAICompletions
+	spec.Operation = execution.OperationChatCompletion
+	spec.RouteMode = execution.RouteConverted
+
+	var data []string
+	result := adapter.ExecuteStream(t.Context(), spec, func(event execution.StreamEvent) error {
+		if event.Kind == execution.StreamEventData {
+			data = append(data, string(event.Data))
+		}
+		return nil
+	})
+	if result.Error == nil {
+		t.Fatal("upstream EOF was dropped")
+	}
+	if len(data) < 3 || !strings.Contains(data[0], `"content":"hi"`) ||
+		!strings.Contains(data[1], `"code":"upstream_stream_truncated"`) ||
+		data[len(data)-1] != "data: [DONE]\n\n" {
+		t.Fatalf("stream data = %q", data)
+	}
+}
+
 func TestAdapterDoesNotCompleteStreamAfterContextCancellation(t *testing.T) {
 	adapter, _, _, keyService, row := newAdapterFixture(t, credentialJSON("access", "refresh", time.Now().Add(time.Hour)))
 	chunks := make(chan codex.ExecuteStreamChunk)
