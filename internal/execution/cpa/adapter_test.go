@@ -1128,6 +1128,91 @@ func TestAdapterSkipsEmptyChunksOutsideNativeResponsesFraming(t *testing.T) {
 	}
 }
 
+func TestAdapterFinishesDeliveredChatStreamAfterUpstreamEOF(t *testing.T) {
+	adapter, _, _, keyService, row := newAdapterFixture(t, credentialJSON("access", "refresh", time.Now().Add(time.Hour)))
+	chunks := make(chan codex.ExecuteStreamChunk, 2)
+	chunks <- codex.ExecuteStreamChunk{Payload: []byte(`{"id":"chat_1","choices":[{"delta":{"content":"hi"}}]}`)}
+	chunks <- codex.ExecuteStreamChunk{Err: io.ErrUnexpectedEOF}
+	close(chunks)
+	setCodexExecutor(t, adapter, &fakeExecutor{stream: &codex.ExecuteStreamResponse{Chunks: chunks}})
+	spec := validSpec(t, row, keyService)
+	spec.ClientProtocol = protocol.OpenAICompletions
+	spec.Operation = execution.OperationChatCompletion
+	spec.RouteMode = execution.RouteConverted
+
+	var data []string
+	result := adapter.ExecuteStream(t.Context(), spec, func(event execution.StreamEvent) error {
+		if event.Kind == execution.StreamEventData {
+			data = append(data, string(event.Data))
+		}
+		return nil
+	})
+	if result.Error == nil || result.Error.Code != "upstream_stream_truncated" ||
+		!result.ResponseStarted || result.StatusCode != http.StatusOK {
+		t.Fatalf("result = %#v", result)
+	}
+	if len(data) != 2 || !strings.Contains(data[0], `"content":"hi"`) || data[1] != "data: [DONE]\n\n" {
+		t.Fatalf("stream data = %q", data)
+	}
+}
+
+func TestGatewayKeepsDeliveredChatBodyAfterUpstreamEOF(t *testing.T) {
+	adapter, _, _, keyService, row := newAdapterFixture(t, credentialJSON("access", "refresh", time.Now().Add(time.Hour)))
+	chunks := make(chan providerStreamChunk, 2)
+	chunks <- providerStreamChunk{Payload: []byte(`{"id":"chat_1","choices":[{"delta":{"content":"hi"}}]}`)}
+	chunks <- providerStreamChunk{Err: io.ErrUnexpectedEOF}
+	close(chunks)
+	adapter.providers[channel.ProviderCodex] = usageStreamFixtureBridge{providerBridge: adapter.providers[channel.ProviderCodex], chunks: chunks}
+	spec := validSpec(t, row, keyService)
+	spec.ClientProtocol = protocol.OpenAICompletions
+	spec.Operation = execution.OperationChatCompletion
+	spec.RouteMode = execution.RouteConverted
+	spec.Path = "/v1/chat/completions"
+	spec.Body = []byte(`{"model":"client-model","stream":true,"messages":[{"role":"user","content":"hello"}]}`)
+	input := gateway.ForwardInput{
+		Dialect: dialect.NewOpenAI(), Group: state.GroupView{ID: row.GroupID},
+		Request:        &dialect.ParsedRequest{Method: spec.Method, Path: spec.Path, Body: spec.Body},
+		RequestID:      spec.RequestID, AttemptID: spec.AttemptID, AttemptSequence: spec.Sequence,
+		ClientProtocol: spec.ClientProtocol, Operation: spec.Operation, ChannelID: spec.ChannelID,
+		RouteMode:      spec.RouteMode, TargetConfig: spec.TargetConfig, Credential: spec.Credential,
+		ExternalModel:  spec.ClientModel, UpstreamModelID: spec.UpstreamModel, ObserveUsage: true,
+	}
+	downstream := httptest.NewRecorder()
+	result := gateway.NewExecutionForwarder(adapter).ForwardStream(t.Context(), input, downstream)
+	body := downstream.Body.String()
+	if result.Err != nil || !strings.Contains(body, `"content":"hi"`) || !strings.HasSuffix(body, "data: [DONE]\n\n") {
+		t.Fatalf("err=%v body=%q", result.Err, body)
+	}
+	if result.ExecutionError == nil || result.ExecutionError.Code != "upstream_stream_truncated" || result.Stream.EndReason == gateway.StreamEndClientCanceled {
+		t.Fatalf("result error=%+v stream=%+v", result.ExecutionError, result.Stream)
+	}
+}
+
+
+func TestAdapterKeepsUpstreamEOFBeforeAnyData(t *testing.T) {
+	adapter, _, _, keyService, row := newAdapterFixture(t, credentialJSON("access", "refresh", time.Now().Add(time.Hour)))
+	chunks := make(chan codex.ExecuteStreamChunk, 1)
+	chunks <- codex.ExecuteStreamChunk{Err: io.ErrUnexpectedEOF}
+	close(chunks)
+	setCodexExecutor(t, adapter, &fakeExecutor{stream: &codex.ExecuteStreamResponse{Chunks: chunks}})
+	spec := validSpec(t, row, keyService)
+	spec.ClientProtocol = protocol.OpenAICompletions
+	spec.Operation = execution.OperationChatCompletion
+	spec.RouteMode = execution.RouteConverted
+
+	var data int
+	result := adapter.ExecuteStream(t.Context(), spec, func(event execution.StreamEvent) error {
+		if event.Kind == execution.StreamEventData {
+			data++
+		}
+		return nil
+	})
+	if result.Error == nil || result.ResponseStarted || data != 0 {
+		t.Fatalf("result = %#v, data = %d", result, data)
+	}
+}
+
+
 func TestAdapterDoesNotCompleteStreamAfterContextCancellation(t *testing.T) {
 	adapter, _, _, keyService, row := newAdapterFixture(t, credentialJSON("access", "refresh", time.Now().Add(time.Hour)))
 	chunks := make(chan codex.ExecuteStreamChunk)

@@ -445,36 +445,63 @@ func (a *Adapter) ExecuteStream(
 			return streamExecutionError(streamCtx, provider, upstreamProtocol, headers, idleErr, credential, applied, ready)
 		}
 		if !ok {
-			if err := context.Cause(streamCtx); err != nil {
+			if err := context.Cause(streamCtx); err != nil && !ready && !upstreamStarted {
 				return streamExecutionError(streamCtx, provider, upstreamProtocol, headers, err, credential, applied, ready)
 			}
 			if nativeResponsesAssembler != nil {
 				payloads, finishErr := nativeResponsesAssembler.finish()
-				if finishErr != nil {
-					return streamInternalError(upstreamProtocol, headers, applied, "invalid subscription SSE stream", ready)
+				if len(payloads) > 0 {
+					if failure := emitPayloads(payloads); failure != nil {
+						return *failure
+					}
 				}
-				if failure := emitPayloads(payloads); failure != nil {
-					return *failure
+				if finishErr != nil {
+					if ready {
+						// Grok/Codex 的原生 Responses 按行切块。上游在半个事件处
+						// 断开时丢掉残帧，补 response.incomplete，不再把已写出的
+						// 200 收成连接错误。
+						if failure := emitPayloads([][]byte{truncatedResponsesEvent()}); failure != nil {
+							return *failure
+						}
+						return truncatedStreamTerminal(upstreamProtocol, spec, headers, applied)
+					}
+					return streamInternalError(upstreamProtocol, headers, applied, "invalid subscription SSE stream", ready)
 				}
 			}
 			if !ready {
 				return streamInternalError(upstreamProtocol, headers, applied, "subscription upstream stream ended without data", false)
 			}
-			if spec.ClientProtocol == protocol.OpenAICompletions && !openAIDone {
-				sequence++
-				if err := sink(execution.StreamEvent{Kind: execution.StreamEventData, Sequence: sequence, Data: []byte("data: [DONE]\n\n")}); err != nil {
-					return streamConsumerStopped(upstreamProtocol, headers, applied, ready)
-				}
-			}
-			if spec.ClientProtocol == protocol.Gemini && !geminiTerminal {
-				sequence++
-				if err := sink(execution.StreamEvent{Kind: execution.StreamEventData, Sequence: sequence, Data: []byte("data: {\"candidates\":[{\"finishReason\":\"STOP\"}]}\n\n")}); err != nil {
-					return streamConsumerStopped(upstreamProtocol, headers, applied, ready)
-				}
+			if failure := finishClientStream(spec, sink, &sequence, &openAIDone, &geminiTerminal, upstreamProtocol, headers, applied); failure != nil {
+				return *failure
 			}
 			return successfulStreamTerminal(upstreamProtocol, spec, headers, applied)
 		}
 		if chunk.Err != nil {
+			if upstreamStarted {
+				// 内容已经从上游到来。Grok 的事件要等空行才完整，EOF 时先补这个
+				// 空行再补 response.incomplete。返回传输错误会让 gateway 把已提交
+				// 连接收成 client_canceled，magpie 就报 unexpected EOF。
+				if nativeResponsesAssembler != nil {
+					if payloads, pushErr := nativeResponsesAssembler.push(nil); pushErr == nil && len(payloads) > 0 {
+						if failure := emitPayloads(payloads); failure != nil {
+							return *failure
+						}
+					}
+					payloads, _ := nativeResponsesAssembler.finish()
+					if len(payloads) > 0 {
+						if failure := emitPayloads(payloads); failure != nil {
+							return *failure
+						}
+					}
+					if failure := emitPayloads([][]byte{truncatedResponsesEvent()}); failure != nil {
+						return *failure
+					}
+				}
+				if failure := finishClientStream(spec, sink, &sequence, &openAIDone, &geminiTerminal, upstreamProtocol, headers, applied); failure != nil {
+					return *failure
+				}
+				return truncatedStreamTerminal(upstreamProtocol, spec, headers, applied)
+			}
 			return streamExecutionError(streamCtx, provider, upstreamProtocol, headers, chunk.Err, credential, applied, ready)
 		}
 		if len(chunk.Payload) == 0 && nativeResponsesAssembler == nil {
@@ -890,6 +917,73 @@ func notSentEvidence(kind execution.ErrorKind, summary, code string) *execution.
 	}
 	return evidence
 }
+
+// finishClientStream 补上客户端协议还缺的终态：Chat Completions 的 [DONE]，
+// Gemini 的 STOP。Anthropic 的 message_stop 由上游事件自带，这里不补，
+// 以免把截断流标成完整结束。
+func finishClientStream(
+	spec execution.AttemptSpec,
+	sink execution.StreamSink,
+	sequence *uint64,
+	openAIDone *bool,
+	geminiTerminal *bool,
+	upstreamProtocol protocol.Protocol,
+	headers http.Header,
+	applied *reasoning.Config,
+) *execution.StreamResult {
+	var payload []byte
+	switch spec.ClientProtocol {
+	case protocol.OpenAICompletions:
+		if openAIDone != nil && *openAIDone {
+			return nil
+		}
+		payload = []byte("data: [DONE]\n\n")
+		if openAIDone != nil {
+			*openAIDone = true
+		}
+	case protocol.Gemini:
+		if geminiTerminal != nil && *geminiTerminal {
+			return nil
+		}
+		payload = []byte("data: {\"candidates\":[{\"finishReason\":\"STOP\"}]}\n\n")
+		if geminiTerminal != nil {
+			*geminiTerminal = true
+		}
+	default:
+		return nil
+	}
+	*sequence++
+	if err := sink(execution.StreamEvent{Kind: execution.StreamEventData, Sequence: *sequence, Data: payload}); err != nil {
+		failure := streamConsumerStopped(upstreamProtocol, headers, applied, true)
+		return &failure
+	}
+	return nil
+}
+
+func truncatedStreamTerminal(
+	upstreamProtocol protocol.Protocol,
+	spec execution.AttemptSpec,
+	headers http.Header,
+	applied *reasoning.Config,
+) execution.StreamResult {
+	result := successfulStreamTerminal(upstreamProtocol, spec, headers, applied)
+	result.Error = &execution.ErrorEvidence{
+		Kind:       execution.ErrorKindProvider,
+		OriginHint: execution.ErrorOriginUpstream,
+		ScopeHint:  execution.ErrorScopeRequest,
+		StatusCode: http.StatusOK,
+		Code:       "upstream_stream_truncated",
+		Summary:    "upstream stream ended before completion",
+	}
+	return result
+}
+
+func truncatedResponsesEvent() []byte {
+	return []byte("event: response.incomplete\ndata: {\"type\":\"response.incomplete\",\"response\":{\"status\":\"incomplete\",\"incomplete_details\":{\"reason\":\"max_output_tokens\"}}}\n\n")
+}
+
+
+
 
 func successfulStreamTerminal(
 	upstreamProtocol protocol.Protocol,
