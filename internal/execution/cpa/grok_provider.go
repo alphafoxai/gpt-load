@@ -105,6 +105,12 @@ func (bridge *grokProviderBridge) ExecuteStream(
 			select {
 			case chunks <- converted:
 			case <-ctx.Done():
+				// 上游读失败会取消这个 context。当前块和后面已经入队的块
+				// 都交给 adapter，否则客户端只能看到连接被掐断。
+				chunks <- converted
+				for pending := range response.Chunks {
+					chunks <- providerStreamChunk{Payload: append([]byte(nil), pending.Payload...), Err: pending.Err}
+				}
 				return
 			}
 		}

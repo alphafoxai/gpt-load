@@ -18,7 +18,6 @@ func (assembler *nativeResponsesSSEAssembler) push(chunk []byte) ([][]byte, erro
 	if len(chunk) == 0 || chunk[len(chunk)-1] != '\n' && chunk[len(chunk)-1] != '\r' {
 		assembler.pending = append(assembler.pending, '\n')
 	}
-
 	var events [][]byte
 	for {
 		eventEnd, found := firstCompleteSubscriptionSSEEvent(assembler.pending)
@@ -45,10 +44,10 @@ func (assembler *nativeResponsesSSEAssembler) finish() ([][]byte, error) {
 	}
 	events, err := assembler.push(nil)
 	if err != nil {
-		return nil, err
+		return events, err
 	}
 	if len(events) == 0 || len(bytes.TrimSpace(assembler.pending)) != 0 {
-		return nil, fmt.Errorf("subscription SSE stream ended with an incomplete event")
+		return events, fmt.Errorf("subscription SSE stream ended with an incomplete event")
 	}
 	return events, nil
 }
