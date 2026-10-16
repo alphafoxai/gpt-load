@@ -475,19 +475,27 @@ func (a *Adapter) ExecuteStream(
 			return streamExecutionError(streamCtx, provider, upstreamProtocol, headers, idleErr, credential, applied, ready)
 		}
 		if !ok {
-			if err := context.Cause(streamCtx); err != nil {
+			if err := context.Cause(streamCtx); err != nil && !ready && !upstreamStarted {
 				return streamExecutionError(streamCtx, provider, upstreamProtocol, headers, err, credential, applied, ready)
 			}
 			if nativeResponsesAssembler != nil {
 				payloads, finishErr := nativeResponsesAssembler.finish()
+				if len(payloads) > 0 {
+					if failure := emitPayloads(payloads); failure != nil {
+						return *failure
+					}
+				}
 				if finishErr != nil {
 					if response.RawSSE {
 						return streamExecutionError(streamCtx, provider, upstreamProtocol, headers, io.ErrUnexpectedEOF, credential, applied, ready)
 					}
+					if ready {
+						if failure := emitPayloads([][]byte{truncatedResponsesEvent()}); failure != nil {
+							return *failure
+						}
+						return truncatedStreamTerminal(upstreamProtocol, modelObserver.Model, headers, applied)
+					}
 					return streamInternalError(upstreamProtocol, headers, applied, "invalid subscription SSE stream", ready)
-				}
-				if failure := emitPayloads(payloads); failure != nil {
-					return *failure
 				}
 			}
 			if !ready {
@@ -511,6 +519,23 @@ func (a *Adapter) ExecuteStream(
 		if chunk.Err != nil {
 			if failure := completeConvertedChatStreamOnUpstreamError(spec, response, sink, &sequence, &openAIDone, ready, delivered, upstreamProtocol, headers, applied); failure != nil {
 				return *failure
+			}
+			if upstreamStarted && nativeResponsesAssembler != nil {
+				if payloads, pushErr := nativeResponsesAssembler.push(nil); pushErr == nil && len(payloads) > 0 {
+					if failure := emitPayloads(payloads); failure != nil {
+						return *failure
+					}
+				}
+				payloads, _ := nativeResponsesAssembler.finish()
+				if len(payloads) > 0 {
+					if failure := emitPayloads(payloads); failure != nil {
+						return *failure
+					}
+				}
+				if failure := emitPayloads([][]byte{truncatedResponsesEvent()}); failure != nil {
+					return *failure
+				}
+				return truncatedStreamTerminal(upstreamProtocol, modelObserver.Model, headers, applied)
 			}
 			return streamExecutionError(streamCtx, provider, upstreamProtocol, headers, chunk.Err, credential, applied, ready)
 		}
@@ -979,6 +1004,28 @@ func completeConvertedChatStreamOnUpstreamError(
 	}
 	*openAIDone = true
 	return nil
+}
+
+func truncatedStreamTerminal(
+	upstreamProtocol protocol.Protocol,
+	model string,
+	headers http.Header,
+	applied *reasoning.Config,
+) execution.StreamResult {
+	result := successfulStreamTerminal(upstreamProtocol, model, headers, applied)
+	result.Error = &execution.ErrorEvidence{
+		Kind:       execution.ErrorKindProvider,
+		OriginHint: execution.ErrorOriginUpstream,
+		ScopeHint:  execution.ErrorScopeRequest,
+		StatusCode: http.StatusOK,
+		Code:       "upstream_stream_truncated",
+		Summary:    "upstream stream ended before completion",
+	}
+	return result
+}
+
+func truncatedResponsesEvent() []byte {
+	return []byte("event: response.incomplete\ndata: {\"type\":\"response.incomplete\",\"response\":{\"status\":\"incomplete\",\"incomplete_details\":{\"reason\":\"max_output_tokens\"}}}\n\n")
 }
 
 func successfulStreamTerminal(

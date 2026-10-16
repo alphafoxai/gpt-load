@@ -70,10 +70,10 @@ func (assembler *nativeResponsesSSEAssembler) finish() ([][]byte, error) {
 	}
 	events, err := assembler.push(nil)
 	if err != nil {
-		return nil, err
+		return events, err
 	}
 	if len(events) == 0 || len(bytes.TrimSpace(assembler.pending)) != 0 {
-		return nil, fmt.Errorf("subscription SSE stream ended with an incomplete event")
+		return events, fmt.Errorf("subscription SSE stream ended with an incomplete event")
 	}
 	return events, nil
 }

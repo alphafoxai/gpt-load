@@ -1158,6 +1158,29 @@ func TestAdapterCompletesConvertedChatStreamAfterUpstreamEOF(t *testing.T) {
 	}
 }
 
+func TestAdapterKeepsUpstreamEOFBeforeAnyData(t *testing.T) {
+	adapter, _, _, keyService, row := newAdapterFixture(t, credentialJSON("access", "refresh", time.Now().Add(time.Hour)))
+	chunks := make(chan codex.ExecuteStreamChunk, 1)
+	chunks <- codex.ExecuteStreamChunk{Err: io.ErrUnexpectedEOF}
+	close(chunks)
+	setCodexExecutor(t, adapter, &fakeExecutor{stream: &codex.ExecuteStreamResponse{Chunks: chunks}})
+	spec := validSpec(t, row, keyService)
+	spec.ClientProtocol = protocol.OpenAICompletions
+	spec.Operation = execution.OperationChatCompletion
+	spec.RouteMode = execution.RouteConverted
+
+	var data int
+	result := adapter.ExecuteStream(t.Context(), spec, func(event execution.StreamEvent) error {
+		if event.Kind == execution.StreamEventData {
+			data++
+		}
+		return nil
+	})
+	if result.Error == nil || result.ResponseStarted || data != 0 {
+		t.Fatalf("result = %#v, data = %d", result, data)
+	}
+}
+
 func TestAdapterDoesNotCompleteStreamAfterContextCancellation(t *testing.T) {
 	adapter, _, _, keyService, row := newAdapterFixture(t, credentialJSON("access", "refresh", time.Now().Add(time.Hour)))
 	chunks := make(chan codex.ExecuteStreamChunk)
