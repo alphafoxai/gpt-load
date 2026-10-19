@@ -48,7 +48,7 @@ import {
   serializeLogState,
   type LogRouteState,
 } from './log-filters'
-import { logTime } from './log-display'
+import { affinityOutcomeKey, logTime } from './log-display'
 
 const isMobile = useMobileLayout()
 const router = useRouter()
@@ -218,6 +218,7 @@ function filterValue(key: string, value: string): string {
   if (key.startsWith('cost_') && key.endsWith('_nano_usd')) return '$' + nanoToUSD(value)
   if ((key === 'stream' || key === 'cache_present') && (value === 'true' || value === 'false'))
     return t(value === 'true' ? 'logs.yes' : 'logs.no')
+  if (key === 'affinity_outcome') return t(affinityOutcomeKey(value))
   return logFilterOptions[key as LogFilterName] && te('logs.values.' + value)
     ? t('logs.values.' + value)
     : value

@@ -1,6 +1,7 @@
 import {
   Activity,
   Candy,
+  Database,
   Network,
   Boxes,
   ChartNoAxesCombined,
@@ -70,6 +71,14 @@ export const navigationItems = [
     section: 'observe',
     icon: ChartNoAxesCombined,
     adminOnly: false,
+  },
+  {
+    id: 'cacheAffinity',
+    name: 'modern-cache-affinity',
+    path: pagePath('monitor-cache-affinity'),
+    section: 'observe',
+    icon: Database,
+    adminOnly: true,
   },
   {
     id: 'health',

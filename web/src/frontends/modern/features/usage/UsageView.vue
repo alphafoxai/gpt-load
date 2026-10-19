@@ -60,6 +60,7 @@ import UsageTrend from './UsageTrend.vue'
 import UsageRank from './UsageRank.vue'
 import UsageComposition from './UsageComposition.vue'
 import UsageMetrics from './UsageMetrics.vue'
+import { cacheAffinityRoute } from '@modern/features/cache-affinity/cache-affinity-state'
 
 const { t, locale } = useI18n()
 const router = useRouter()
@@ -556,7 +557,10 @@ const bucketLabel = computed(() => {
       :aria-busy="query.isFetching.value"
       :class="{ 'is-updating': query.isPlaceholderData.value }"
     >
-      <UsageMetrics :report="report" />
+      <UsageMetrics
+        :report="report"
+        :cache-affinity-route="admin ? cacheAffinityRoute(state.filters, state.range) : undefined"
+      />
       <AppSegmentedControl
         v-if="isMobile"
         v-model="mobileSection"

@@ -1,5 +1,6 @@
 import type { LocationQuery, LocationQueryRaw } from 'vue-router'
 import { accessProtocols } from '@modern/api/access-keys'
+import { affinityOutcomeFilters } from '@modern/api/cache-affinity'
 import {
   internalLogFilters,
   logFilterNames,
@@ -34,6 +35,7 @@ export const logFilterOptions: Partial<Record<LogFilterName, readonly string[]>>
   operation: logOperations,
   stream: ['true', 'false'],
   cache_present: ['true', 'false'],
+  affinity_outcome: affinityOutcomeFilters,
   usage_state: ['complete', 'partial', 'missing', 'not_applicable'],
   cost_state: ['priced', 'unpriced', 'not_applicable'],
   pricing_completeness: ['complete', 'partial', 'unavailable', 'not_applicable'],
@@ -100,6 +102,12 @@ export const advancedLogFilters: readonly LogFilterDefinition[] = [
     section: 'result',
     kind: 'select',
     values: logFilterOptions.cache_present,
+  },
+  {
+    key: 'affinity_outcome',
+    section: 'routing',
+    kind: 'select',
+    values: logFilterOptions.affinity_outcome,
   },
   ...(['first_response', 'duration', 'input_tokens', 'output_tokens', 'cost'] as const).flatMap(
     (name): LogFilterDefinition[] => [

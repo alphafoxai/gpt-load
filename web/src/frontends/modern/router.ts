@@ -36,11 +36,13 @@ export function createModernRouter(
                         ? () => import('./features/logs/LogsView.vue')
                         : item.id === 'usage'
                           ? () => import('./features/usage/UsageView.vue')
-                          : item.id === 'health'
-                            ? () => import('./features/health/HealthView.vue')
-                            : item.id === 'degrade'
-                              ? () => import('./features/degrade/DegradeView.vue')
-                              : () => import('./features/models/ModelsView.vue'),
+                          : item.id === 'cacheAffinity'
+                            ? () => import('./features/cache-affinity/CacheAffinityView.vue')
+                            : item.id === 'health'
+                              ? () => import('./features/health/HealthView.vue')
+                              : item.id === 'degrade'
+                                ? () => import('./features/degrade/DegradeView.vue')
+                                : () => import('./features/models/ModelsView.vue'),
         meta: { requiresAuth: true, adminOnly: item.adminOnly },
       })),
       {

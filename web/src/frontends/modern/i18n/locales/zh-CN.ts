@@ -12,6 +12,7 @@ import { zhCN as home } from './home'
 import { zhCN as accessKeys } from './access-keys'
 import { zhCN as logs } from './logs'
 import { zhCN as usage } from './usage'
+import { zhCN as cacheAffinity } from './cache-affinity'
 import { zhCN as health } from './health'
 import { zhCN as credentialCards } from './credential-cards'
 import { zhCN as groupWorkflows } from './group-workflows'
@@ -40,6 +41,7 @@ export default {
   protocols,
   logs,
   usage,
+  cacheAffinity,
   health,
   accessKeys,
   groupWorkflows,
@@ -125,6 +127,7 @@ export default {
     models: { title: '模型' },
     accessKeys: { title: '访问密钥' },
     usage: { title: '用量统计' },
+    cacheAffinity: { title: cacheAffinity.title },
     logs: { title: '请求日志' },
     health: { title: '运行健康' },
     degrade: { title: '降智观察' },

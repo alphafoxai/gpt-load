@@ -15,12 +15,6 @@ export const zhCN = {
   outputRate: '平均输出速度',
   pricingModeHint: '按 {mode} 价格计价',
   contextTierHint: '输入 Token ≥ {threshold}',
-  affinityKinds: {
-    prompt_prefix: '提示词前缀',
-    prompt_cache_key: '缓存键',
-    response_continuity: '响应连续性',
-    other: '亲和命中',
-  },
   standaloneSearchHint: 'Codex 独立搜索请求',
   returnedModelMismatchHint: '请求上游模型：{requested}\n上游返回模型：{returned}',
   columnGroups: {
@@ -155,7 +149,7 @@ export const zhCN = {
     model_consistency: '一致性',
     upstream_protocol: '上游协议',
     route_mode: '路由',
-    affinity_hit: '亲和',
+    affinity_outcome: '粘性',
     reasoning_mode: '思考',
     cache_hit_rate: '命中率',
     cache_write_tokens: '缓存写',
@@ -192,6 +186,7 @@ export const zhCN = {
     cost_state: '计价',
     pricing_completeness: '计费',
     cache_present: '缓存',
+    affinity_outcome: '粘性结果',
     attempt_status_code: '尝试 HTTP',
     failure_category: '失败类型',
     error_code: '错误代码',
@@ -209,6 +204,10 @@ export const zhCN = {
     output_tokens_max: '输出 Token 上限',
     cost_min_nano_usd: '费用下限（$）',
     cost_max_nano_usd: '费用上限（$）',
+  },
+  affinityOutcomeFilters: {
+    miss: '未命中（全部）',
+    pinned: '已绑定（全部）',
   },
   errors: {
     invalidText: '文字过长或包含无效字符。',
@@ -338,12 +337,6 @@ export const enUS: typeof zhCN = {
   outputRate: 'Average output speed',
   pricingModeHint: 'Priced using {mode} rates',
   contextTierHint: 'Input tokens ≥ {threshold}',
-  affinityKinds: {
-    prompt_prefix: 'Prompt prefix',
-    prompt_cache_key: 'Cache key',
-    response_continuity: 'Response continuity',
-    other: 'Affinity match',
-  },
   standaloneSearchHint: 'Codex standalone search request',
   returnedModelMismatchHint:
     'Requested upstream model: {requested}\nReported upstream model: {returned}',
@@ -481,7 +474,7 @@ export const enUS: typeof zhCN = {
     model_consistency: 'Consistency',
     upstream_protocol: 'Upstream protocol',
     route_mode: 'Route',
-    affinity_hit: 'Affinity',
+    affinity_outcome: 'Stickiness',
     reasoning_mode: 'Reasoning',
     cache_hit_rate: 'Hit rate',
     cache_write_tokens: 'Cache write',
@@ -518,6 +511,7 @@ export const enUS: typeof zhCN = {
     cost_state: 'Pricing',
     pricing_completeness: 'Completeness',
     cache_present: 'Cache',
+    affinity_outcome: 'Affinity outcome',
     attempt_status_code: 'Attempt HTTP',
     failure_category: 'Failure category',
     error_code: 'Error code',
@@ -535,6 +529,10 @@ export const enUS: typeof zhCN = {
     output_tokens_max: 'Max. output tokens',
     cost_min_nano_usd: 'Min. cost ($)',
     cost_max_nano_usd: 'Max. cost ($)',
+  },
+  affinityOutcomeFilters: {
+    miss: 'Any miss',
+    pinned: 'Any pinned',
   },
   errors: {
     invalidText: 'Text is too long or contains invalid characters.',
@@ -664,12 +662,6 @@ export const jaJP: typeof zhCN = {
   outputRate: '平均出力速度',
   pricingModeHint: '{mode} 料金を適用',
   contextTierHint: '入力トークン ≥ {threshold}',
-  affinityKinds: {
-    prompt_prefix: 'プロンプト接頭辞',
-    prompt_cache_key: 'キャッシュキー',
-    response_continuity: '応答の連続性',
-    other: 'アフィニティ一致',
-  },
   standaloneSearchHint: 'Codex の独立検索リクエスト',
   returnedModelMismatchHint: '要求した上流モデル：{requested}\n上流が返却したモデル：{returned}',
   columnGroups: {
@@ -805,7 +797,7 @@ export const jaJP: typeof zhCN = {
     model_consistency: '一致性',
     upstream_protocol: '上流プロトコル',
     route_mode: 'ルート',
-    affinity_hit: 'アフィニティ',
+    affinity_outcome: 'スティッキー',
     reasoning_mode: '推論',
     cache_hit_rate: '命中率',
     cache_write_tokens: '書込',
@@ -842,6 +834,7 @@ export const jaJP: typeof zhCN = {
     cost_state: '課金',
     pricing_completeness: '料金完全性',
     cache_present: 'キャッシュ',
+    affinity_outcome: '粘性結果',
     attempt_status_code: '試行 HTTP',
     failure_category: '失敗分類',
     error_code: 'エラーコード',
@@ -859,6 +852,10 @@ export const jaJP: typeof zhCN = {
     output_tokens_max: '出力 Token 上限',
     cost_min_nano_usd: '料金下限（$）',
     cost_max_nano_usd: '料金上限（$）',
+  },
+  affinityOutcomeFilters: {
+    miss: '未命中（すべて）',
+    pinned: '固定済み（すべて）',
   },
   errors: {
     invalidText: '文字が長すぎるか無効な文字が含まれています。',

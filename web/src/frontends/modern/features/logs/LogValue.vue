@@ -3,6 +3,7 @@ import { protocolLabel } from '@modern/i18n/protocols'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { LogEntry } from '@modern/api/logs'
+import { hitAffinityOutcomes } from '@modern/api/cache-affinity'
 import type { GroupRow } from '@modern/api/groups'
 import type { GroupChannel } from '@modern/api/group-create'
 import {
@@ -15,6 +16,7 @@ import {
 } from '@modern/components/ui'
 import type { LogColumnId } from './log-columns'
 import {
+  affinityOutcomeKey,
   exactLogMoney,
   logCacheRate,
   logCacheWrites,
@@ -45,11 +47,10 @@ const channel = computed(() =>
 function valueName(value: string | null | undefined): string {
   return !value ? '—' : te('logs.values.' + value) ? t('logs.values.' + value) : value
 }
-const affinityReason = computed(() => {
-  if (!props.row.affinity_hit) return ''
-  const key = 'logs.affinityKinds.' + props.row.affinity_kind
-  return te(key) ? t(key) : t('logs.affinityKinds.other')
-})
+const affinityHint = computed(() =>
+  t('cacheAffinity.outcomeHints.' + (props.row.affinity_outcome || 'unrecorded')),
+)
+const affinityActive = computed(() => hitAffinityOutcomes.includes(props.row.affinity_outcome))
 const tokenValue = computed(() => {
   const row = props.row
   if (props.column === 'cache_write_tokens') return logCacheWrites(row)
@@ -94,8 +95,9 @@ const display = computed(() => {
     case 'credential_name':
       return row.credential_name || (row.credential_id ? t('logs.unavailableCredential') : '—')
     case 'stream':
-    case 'affinity_hit':
-      return t(row[column] ? 'logs.yes' : 'logs.no')
+      return t(row.stream ? 'logs.yes' : 'logs.no')
+    case 'affinity_outcome':
+      return t(affinityOutcomeKey(row.affinity_outcome))
     case 'first_response_ms':
       return row.stream && row.first_response_ms !== null && row.first_response_ms > 0
         ? logDuration(row.first_response_ms, locale.value)
@@ -217,18 +219,19 @@ const hint = computed(() => {
     v-else-if="column === 'protocol' || column === 'upstream_protocol'"
     :protocol="row[column]"
   />
-  <AppTooltip v-else-if="column === 'affinity_hit' && row.affinity_hit" :label="affinityReason">
-    <span
-      tabindex="0"
-      :aria-label="display + ': ' + affinityReason"
-      :class="{ 'modern-log-boolean': table, 'is-true': row.affinity_hit }"
-      >{{ display }}</span
-    >
-  </AppTooltip>
+  <AppOverflowText
+    v-else-if="column === 'affinity_outcome'"
+    tabindex="0"
+    :aria-label="display + ': ' + affinityHint"
+    :text="display"
+    :hint="affinityHint"
+    :full-text="affinityHint"
+    :class="{ 'modern-log-boolean': table, 'is-true': affinityActive }"
+  />
   <span
-    v-else-if="table && (column === 'stream' || column === 'affinity_hit')"
+    v-else-if="table && column === 'stream'"
     class="modern-log-boolean"
-    :class="{ 'is-true': row[column] }"
+    :class="{ 'is-true': row.stream }"
     >{{ display }}</span
   >
   <span

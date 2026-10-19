@@ -3,6 +3,7 @@ import { readAuditResult, type AuditResult } from './experimental'
 import type { ApiClient } from '@shared/http/client'
 import { ApiError, InvalidResponseError } from '@shared/http/errors'
 import { boolean, integer, list, oneOf, record, text } from './response'
+import { affinityOutcomes, type AffinityOutcome } from './cache-affinity'
 
 export const logStatuses = ['success', 'error', 'incomplete', 'canceled'] as const
 export const logOperations = [
@@ -59,6 +60,7 @@ export const logFilterNames = [
   'cost_state',
   'pricing_completeness',
   'cache_present',
+  'affinity_outcome',
   'attempt_status_code',
   'failure_category',
   'error_code',
@@ -127,6 +129,7 @@ export interface LogEntry {
   error_summary: string
   affinity_hit: boolean
   affinity_kind: string
+  affinity_outcome: AffinityOutcome
   group_id: number | null
   channel_id: string | null
   credential_id: number | null
@@ -338,6 +341,7 @@ function entry(value: unknown): LogEntry {
     error_summary: text(row.error_summary),
     affinity_hit: boolean(row.affinity_hit),
     affinity_kind: text(row.affinity_kind),
+    affinity_outcome: oneOf(row.affinity_outcome, affinityOutcomes),
     group_id: optionalNumber(row.group_id),
     channel_id: optionalText(row.channel_id),
     credential_id: optionalNumber(row.credential_id),

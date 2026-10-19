@@ -14,8 +14,10 @@ import {
   percentage,
 } from './usage-display'
 import UsageMetricGraphic from './UsageMetricGraphic.vue'
+import { RouterLink } from 'vue-router'
+import type { CacheAffinityRoute } from '@modern/features/cache-affinity/cache-affinity-state'
 
-const props = defineProps<{ report: UsageReport }>()
+const props = defineProps<{ report: UsageReport; cacheAffinityRoute?: CacheAffinityRoute }>()
 const { t, locale } = useI18n()
 const report = computed(() => props.report)
 const compact = (value: number) => formatCompactNumber(value, locale.value)
@@ -115,6 +117,12 @@ const cards = computed<UsageCard[]>(() => {
         <UsageMetricGraphic class="modern-usage-stat-graphic" :report="report" :metric="card.id" />
       </div>
       <span class="modern-usage-stat-detail">{{ card.detail }}</span>
+      <RouterLink
+        v-if="card.id === 'sticky' && cacheAffinityRoute"
+        class="modern-usage-stat-link"
+        :to="cacheAffinityRoute"
+        >{{ t('usage.cacheAffinityLink') }}</RouterLink
+      >
     </article>
   </div>
 </template>
@@ -205,6 +213,12 @@ const cards = computed<UsageCard[]>(() => {
   letter-spacing: var(--modern-tracking-title);
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
+}
+.modern-usage-stat-link {
+  color: var(--modern-accent);
+  font-size: var(--modern-font-size-small);
+  text-decoration: underline;
+  text-underline-offset: var(--modern-space-1);
 }
 .modern-usage-stat-detail {
   margin-top: auto;

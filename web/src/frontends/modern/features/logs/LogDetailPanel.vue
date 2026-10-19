@@ -77,7 +77,7 @@ const outcomeFields = computed<LogColumnId[]>(() => [
   'status_code',
   'stream',
   'operation',
-  ...(props.admin ? ['attempt_count' as const, 'affinity_hit' as const] : []),
+  ...(props.admin ? ['attempt_count' as const, 'affinity_outcome' as const] : []),
 ])
 const routingFields: LogColumnId[] = [
   'access_key',

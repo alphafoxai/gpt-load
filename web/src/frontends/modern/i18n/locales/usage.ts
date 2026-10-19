@@ -23,12 +23,13 @@ export const zhCN = {
   tokenDetail: '输入 {input} · 输出 {output}',
   cacheDetail: '缓存读取 {count}',
   stickyDetail: '{pinned} 次续接请求中 {hits} 次落在原账号',
+  cacheAffinityLink: '查看缓存与粘性',
   costDetail: '按已记录用量估算',
   unpriced: '未计价 {count} · 计价不完整 {partial}',
   cacheHint:
     '缓存读取 Token ÷ 输入 Token 总量。输入包含未缓存输入、缓存读取和缓存写入；缓存写入不计为命中。',
   stickyHint:
-    '续接请求：到达时会话已绑定账号的请求（亲和有效期内同一提示前缀或 prompt_cache_key，或带 previous_response_id）。命中率 = 落在原账号的续接请求 ÷ 续接请求。gpt-load 重启会清空绑定，重启后的首轮请求不计入。',
+    '续接请求：到达时会话已绑定账号的请求（亲和有效期内同一提示前缀或 prompt_cache_key，或带 previous_response_id）。命中率 = 落在原账号的续接请求 ÷ 续接请求。未命中原因见「缓存与粘性」页。',
   trend: '用量趋势',
   bucket: '每 {minutes} 分钟',
   composition: 'Token 构成',
@@ -83,12 +84,13 @@ export const enUS = {
   tokenDetail: '{input} input · {output} output',
   cacheDetail: '{count} cache read tokens',
   stickyDetail: '{hits} of {pinned} follow-ups stayed on their account',
+  cacheAffinityLink: 'Cache & stickiness',
   costDetail: 'Estimated from recorded usage',
   unpriced: '{count} unpriced · {partial} partially priced',
   cacheHint:
     'Cache read tokens divided by all input tokens. Input includes uncached input, cache reads and cache writes; cache writes do not count as hits.',
   stickyHint:
-    'Follow-ups are requests whose conversation already had a pinned account when they arrived (same prompt prefix or prompt_cache_key within the affinity TTL, or a previous_response_id). Rate = follow-ups routed to the pinned account ÷ follow-ups. Restarting gpt-load clears the pins, so the first turn after a restart is not counted.',
+    'Follow-ups are requests whose conversation already had a pinned account when they arrived (same prompt prefix or prompt_cache_key within the affinity TTL, or a previous_response_id). Rate = follow-ups routed to the pinned account ÷ follow-ups. Miss reasons are on the Cache & stickiness page.',
   trend: 'Usage trend',
   bucket: 'Every {minutes} min',
   composition: 'Token breakdown',
@@ -144,12 +146,13 @@ export const jaJP = {
   tokenDetail: '入力 {input} · 出力 {output}',
   cacheDetail: 'キャッシュ読み取り {count}',
   stickyDetail: '継続リクエスト {pinned} 件中 {hits} 件が元のアカウントに振り分けられました',
+  cacheAffinityLink: 'キャッシュとスティッキー',
   costDetail: '記録された使用量から推定',
   unpriced: '未計算 {count} · 一部計算 {partial}',
   cacheHint:
     'キャッシュ読み取り Token ÷ 入力 Token 合計。入力には非キャッシュ入力、読み取り、書き込みを含みます。書き込みはヒットに含めません。',
   stickyHint:
-    '継続リクエスト：到着時に会話がアカウントに固定済みのリクエスト（有効期間内の同一プロンプト接頭辞・prompt_cache_key、または previous_response_id）。率 = 元のアカウントに振り分けられた継続リクエスト ÷ 継続リクエスト。gpt-load を再起動すると固定は消え、再起動後の最初のリクエストは数えません。',
+    '継続リクエスト：到着時に会話がアカウントに固定済みのリクエスト（有効期間内の同一プロンプト接頭辞・prompt_cache_key、または previous_response_id）。率 = 元のアカウントに振り分けられた継続リクエスト ÷ 継続リクエスト。未ヒットの理由は「キャッシュとスティッキー」ページで確認できます。',
   trend: '使用量の推移',
   bucket: '{minutes} 分ごと',
   composition: 'Token 内訳',

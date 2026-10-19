@@ -28,7 +28,7 @@ export const logColumnIds = [
   'model_consistency',
   'upstream_protocol',
   'route_mode',
-  'affinity_hit',
+  'affinity_outcome',
   'reasoning_mode',
   'cache_hit_rate',
   'cache_write_tokens',
@@ -68,7 +68,7 @@ const definitions: readonly [LogColumnId, number, LogColumnSection, boolean, boo
     ['reasoning_mode', 120, 'models', true],
     ['stream', 48, 'request', true],
     ['route_mode', 64, 'routing', true, true],
-    ['affinity_hit', 56, 'routing', true, true],
+    ['affinity_outcome', 96, 'routing', true, true],
     ['duration_ms', 72, 'performance', true],
     ['first_response_ms', 64, 'performance', true],
     ['status', 68, 'result', true],
@@ -151,6 +151,7 @@ export function useLogColumns(admin: boolean) {
               ? 'estimated_cost_nano_usd'
               : id,
         )
+        // 已下线的字段（如 affinity_hit）不在可用列中，这里直接丢弃，不影响其余已保存的列。
         .filter(
           (id): id is LogColumnId => typeof id === 'string' && availableIDs.has(id as LogColumnId),
         )
@@ -188,13 +189,13 @@ export function useLogColumns(admin: boolean) {
     'input_tokens-output_tokens',
     'cache_read_tokens-cache_hit_rate',
     'cache_write_tokens-total_tokens',
-    'route_mode-affinity_hit',
+    'route_mode-affinity_outcome',
   ])
   const pairs: readonly (readonly [LogColumnId, LogColumnId, number])[] = [
     ['reasoning_mode', 'stream', 88],
     ['group', 'channel', 148],
     ['access_key', 'credential_name', 156],
-    ['route_mode', 'affinity_hit', 62],
+    ['route_mode', 'affinity_outcome', 96],
     ['status', 'status_code', 76],
     ['error_code', 'error_summary', 200],
     ['duration_ms', 'first_response_ms', 132],

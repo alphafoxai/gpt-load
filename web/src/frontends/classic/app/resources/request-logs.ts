@@ -209,6 +209,7 @@ export interface RequestLogItemDto {
   error_summary: string
   affinity_hit: boolean
   affinity_kind: string
+  affinity_outcome: string
   group_id: number | null
   channel_id: string | null
   credential_id: number | null
@@ -370,6 +371,7 @@ const itemFields = [
   'error_summary',
   'affinity_hit',
   'affinity_kind',
+  'affinity_outcome',
   'group_id',
   'channel_id',
   'credential_id',
@@ -725,6 +727,7 @@ function projectItemRecord(record: Record<string, unknown>): RequestLogItemDto {
     error_summary: projectString(record.error_summary, { allowEmpty: true }),
     affinity_hit: projectBoolean(record.affinity_hit),
     affinity_kind: projectString(record.affinity_kind, { allowEmpty: true }),
+    affinity_outcome: projectString(record.affinity_outcome, { allowEmpty: true }),
     group_id: record.group_id === null ? null : projectSafeInteger(record.group_id, { minimum: 1 }),
     channel_id: record.channel_id === null ? null : projectChannelID(record.channel_id),
     credential_id:

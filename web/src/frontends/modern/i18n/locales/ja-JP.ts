@@ -12,6 +12,7 @@ import { jaJP as home } from './home'
 import { jaJP as accessKeys } from './access-keys'
 import { jaJP as logs } from './logs'
 import { jaJP as usage } from './usage'
+import { jaJP as cacheAffinity } from './cache-affinity'
 import { jaJP as health } from './health'
 import { jaJP as credentialCards } from './credential-cards'
 import { jaJP as groupWorkflows } from './group-workflows'
@@ -40,6 +41,7 @@ export default {
   protocols,
   logs,
   usage,
+  cacheAffinity,
   health,
   accessKeys,
   groupWorkflows,
@@ -128,6 +130,7 @@ export default {
     models: { title: 'モデル' },
     accessKeys: { title: 'アクセスキー' },
     usage: { title: '使用量' },
+    cacheAffinity: { title: cacheAffinity.title },
     logs: { title: 'リクエストログ' },
     health: { title: '稼働状況' },
     degrade: { title: '品質低下' },

@@ -12,6 +12,7 @@ import { enUS as home } from './home'
 import { enUS as accessKeys } from './access-keys'
 import { enUS as logs } from './logs'
 import { enUS as usage } from './usage'
+import { enUS as cacheAffinity } from './cache-affinity'
 import { enUS as health } from './health'
 import { enUS as credentialCards } from './credential-cards'
 import { enUS as groupWorkflows } from './group-workflows'
@@ -40,6 +41,7 @@ export default {
   protocols,
   logs,
   usage,
+  cacheAffinity,
   health,
   accessKeys,
   groupWorkflows,
@@ -129,6 +131,7 @@ export default {
     models: { title: 'Models' },
     accessKeys: { title: 'Access keys' },
     usage: { title: 'Usage' },
+    cacheAffinity: { title: cacheAffinity.title },
     logs: { title: 'Request logs' },
     health: { title: 'Runtime health' },
     degrade: { title: 'Downgrade watch' },

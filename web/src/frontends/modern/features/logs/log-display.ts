@@ -95,3 +95,9 @@ export function logCacheRate(row: LogEntry): number | null {
 export function logHasUsage(row: LogEntry): boolean {
   return row.usage_state === 'complete' || row.usage_state === 'partial'
 }
+// 粘性结果的文案键：空串是 rc.51 之前写入的日志；miss / pinned 只用于筛选，取筛选集合的文案。
+export function affinityOutcomeKey(outcome: string): string {
+  return outcome === 'miss' || outcome === 'pinned'
+    ? 'logs.affinityOutcomeFilters.' + outcome
+    : 'cacheAffinity.outcomes.' + (outcome || 'unrecorded')
+}

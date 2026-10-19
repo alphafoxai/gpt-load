@@ -41,6 +41,7 @@ import {
   usdToNano,
   type LogFilterDefinition,
 } from './log-filters'
+import { affinityOutcomeKey } from './log-display'
 
 const props = defineProps<{
   filters: LogQuery
@@ -207,7 +208,9 @@ function options(field: LogFilterDefinition) {
           ? protocolLabel(value, t)
           : field.key === 'audit_status'
             ? t('requestAudit.statuses.' + value)
-            : valueLabel(value),
+            : field.key === 'affinity_outcome'
+              ? t(affinityOutcomeKey(value))
+              : valueLabel(value),
     })),
   ]
 }
