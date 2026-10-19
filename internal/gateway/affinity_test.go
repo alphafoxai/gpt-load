@@ -106,6 +106,8 @@ func TestHandlerRelearnsSoftAffinityWhenModelCandidateRangeChanges(t *testing.T)
 
 	assertAffinityAttemptKeys(t, forwarder.inputs, []string{"sk-one", "sk-two", "sk-two", "sk-one"})
 	assertAffinityHits(t, sink.snapshot(), []bool{false, false, true, false})
+	// 第 2、4 个请求找到了绑定，但绑定的账号不在新模型的候选里：算续接，未命中。
+	assertAffinityPinned(t, sink.snapshot(), []bool{false, true, true, true})
 	assertAffinityUpstreamModels(t, forwarder.inputs, []string{"gpt-4o", "gpt-4o-mini", "gpt-4o-mini", "gpt-4o"})
 }
 
@@ -127,6 +129,7 @@ func TestHandlerDoesNotLearnAffinityForNonParticipatingGroup(t *testing.T) {
 
 	assertAffinityAttemptKeys(t, forwarder.inputs, []string{"sk-one", "sk-two"})
 	assertAffinityHits(t, sink.snapshot(), []bool{false, false})
+	assertAffinityPinned(t, sink.snapshot(), []bool{false, false})
 }
 
 func TestHandlerGroupAffinityOverrideWinsOverGlobalSetting(t *testing.T) {
@@ -465,6 +468,17 @@ func assertAffinityHits(t *testing.T, events []telemetry.RequestEvent, want []bo
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("affinity hits = %#v, want %#v", got, want)
+	}
+}
+
+func assertAffinityPinned(t *testing.T, events []telemetry.RequestEvent, want []bool) {
+	t.Helper()
+	got := make([]bool, 0, len(events))
+	for _, event := range events {
+		got = append(got, event.AffinityPinned)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("affinity pinned = %#v, want %#v", got, want)
 	}
 }
 

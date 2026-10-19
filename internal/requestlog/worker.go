@@ -143,6 +143,8 @@ type usageStatDelta struct {
 	PartialCount            int64
 	UnpricedRequestCount    int64
 	PricingPartialCount     int64
+	AffinityPinnedCount     int64
+	AffinityHitCount        int64
 }
 
 func writeRequestLogBatch(tx *gorm.DB, rows []models.RequestLog) error {
@@ -410,6 +412,8 @@ func usageStatUpsertClause() clause.OnConflict {
 			"partial_count",
 			"unpriced_request_count",
 			"pricing_partial_count",
+			"affinity_pinned_count",
+			"affinity_hit_count",
 		}),
 	}
 }
@@ -453,6 +457,8 @@ func buildUsageAggregationJournals(
 				PartialCount:            delta.PartialCount,
 				UnpricedRequestCount:    delta.UnpricedRequestCount,
 				PricingPartialCount:     delta.PricingPartialCount,
+				AffinityPinnedCount:     delta.AffinityPinnedCount,
+				AffinityHitCount:        delta.AffinityHitCount,
 			})
 		}
 	}
@@ -491,6 +497,8 @@ func buildUsageJournalDeltas(
 			{name: "partial_count", target: &delta.PartialCount, value: journal.PartialCount},
 			{name: "unpriced_request_count", target: &delta.UnpricedRequestCount, value: journal.UnpricedRequestCount},
 			{name: "pricing_partial_count", target: &delta.PricingPartialCount, value: journal.PricingPartialCount},
+			{name: "affinity_pinned_count", target: &delta.AffinityPinnedCount, value: journal.AffinityPinnedCount},
+			{name: "affinity_hit_count", target: &delta.AffinityHitCount, value: journal.AffinityHitCount},
 		} {
 			if err := checkedInt64Add(field.target, field.value, field.name); err != nil {
 				return nil, err
@@ -580,6 +588,19 @@ func (delta *usageStatDelta) addRow(row models.RequestLog) error {
 	if row.CostState == string(pricing.CostStatePriced) &&
 		row.PricingCompleteness == string(pricing.CompletenessPartial) {
 		if err := checkedInt64Add(&delta.PricingPartialCount, 1, "pricing_partial_count"); err != nil {
+			return err
+		}
+	}
+	if row.AffinityHit && !row.AffinityPinned {
+		return fmt.Errorf("aggregate request log %q: affinity hit without a pinned conversation", row.ID)
+	}
+	if row.AffinityPinned {
+		if err := checkedInt64Add(&delta.AffinityPinnedCount, 1, "affinity_pinned_count"); err != nil {
+			return err
+		}
+	}
+	if row.AffinityHit {
+		if err := checkedInt64Add(&delta.AffinityHitCount, 1, "affinity_hit_count"); err != nil {
 			return err
 		}
 	}
@@ -758,6 +779,8 @@ func checkedUsageStatTotal(
 		{name: "partial_count", left: existing.PartialCount, right: delta.PartialCount, set: func(value int64) { total.PartialCount = value }},
 		{name: "unpriced_request_count", left: existing.UnpricedRequestCount, right: delta.UnpricedRequestCount, set: func(value int64) { total.UnpricedRequestCount = value }},
 		{name: "pricing_partial_count", left: existing.PricingPartialCount, right: delta.PricingPartialCount, set: func(value int64) { total.PricingPartialCount = value }},
+		{name: "affinity_pinned_count", left: existing.AffinityPinnedCount, right: delta.AffinityPinnedCount, set: func(value int64) { total.AffinityPinnedCount = value }},
+		{name: "affinity_hit_count", left: existing.AffinityHitCount, right: delta.AffinityHitCount, set: func(value int64) { total.AffinityHitCount = value }},
 	} {
 		value, ok := usage.CheckedAdd(field.left, field.right)
 		if !ok {

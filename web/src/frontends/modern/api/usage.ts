@@ -30,6 +30,8 @@ const counts = [
   'partial_count',
   'unpriced_request_count',
   'pricing_partial_count',
+  'affinity_pinned_count',
+  'affinity_hit_count',
 ] as const
 export type UsageAggregate = Record<(typeof counts)[number], number> & {
   estimated_cost_nano_usd: string
@@ -75,7 +77,9 @@ function aggregate(value: unknown): UsageAggregate {
         result.cache_write_5m_tokens +
         result.cache_write_1h_tokens +
         result.cache_write_unknown_tokens +
-        result.output_tokens
+        result.output_tokens ||
+    result.affinity_hit_count > result.affinity_pinned_count ||
+    result.affinity_pinned_count > result.request_count
   )
     throw new InvalidResponseError()
   return { ...result, estimated_cost_nano_usd: money(row.estimated_cost_nano_usd) }

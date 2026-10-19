@@ -236,6 +236,9 @@ type UsageAggregate struct {
 	PartialCount            int64
 	UnpricedRequestCount    int64
 	PricingPartialCount     int64
+	// AffinityPinnedCount 续接已绑定会话的请求数；AffinityHitCount 其中落在原账号的请求数。
+	AffinityPinnedCount int64
+	AffinityHitCount    int64
 }
 
 type UsageSeriesPoint struct {

@@ -104,7 +104,13 @@ const aggregateKeys = [
   'unpriced_request_count',
   'pricing_partial_count',
 ] as const
-const aggregateFields = [...aggregateKeys, 'estimated_cost_nano_usd'] as const
+// 粘性统计只在 modern 用量页展示；classic 接受这两个字段但不解析。
+const aggregateFields = [
+  ...aggregateKeys,
+  'estimated_cost_nano_usd',
+  'affinity_pinned_count',
+  'affinity_hit_count',
+] as const
 const distributionAggregateFields = [
   'request_count',
   'total_tokens',
@@ -216,12 +222,7 @@ export function projectUsageReport(value: unknown): UsageReportDto {
   let previousBucketEndMS = rangeFromMS
   const series = projectArray(record.series, (value) => {
     const item = projectRecord(value)
-    assertNoSecretLikeFields(item, [
-      ...aggregateKeys,
-      'estimated_cost_nano_usd',
-      'bucket_start_ms',
-      'bucket_end_ms',
-    ])
+    assertNoSecretLikeFields(item, [...aggregateFields, 'bucket_start_ms', 'bucket_end_ms'])
     const bucketStartMS = projectEpochMilliseconds(item.bucket_start_ms)
     const bucketEndMS = projectEpochMilliseconds(item.bucket_end_ms)
     const alignedBucketStartMS = Math.floor(bucketStartMS / bucketWidthMs) * bucketWidthMs

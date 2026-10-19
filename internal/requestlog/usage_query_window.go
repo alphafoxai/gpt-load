@@ -94,4 +94,5 @@ const usageWindowColumns = `bucket_start_ms, group_id, access_key_id, model,
 	request_count, success_count, failure_count,
 	uncached_input_tokens, cache_read_tokens, cache_write_5m_tokens, cache_write_1h_tokens,
 	cache_write_unknown_tokens, output_tokens, estimated_cost_nano_usd,
-	usage_missing_count, partial_count, unpriced_request_count, pricing_partial_count`
+	usage_missing_count, partial_count, unpriced_request_count, pricing_partial_count,
+	affinity_pinned_count, affinity_hit_count`

@@ -63,7 +63,8 @@ const decisionUsageProjection = `bucket_start_ms, group_id, access_key_id, model
 	0 AS uncached_input_tokens, 0 AS cache_read_tokens, 0 AS cache_write_5m_tokens,
 	0 AS cache_write_1h_tokens, 0 AS cache_write_unknown_tokens, 0 AS output_tokens,
 	estimated_cost_nano_usd, 0 AS usage_missing_count, 0 AS partial_count,
-	unpriced_request_count, pricing_partial_count, channel_id, credential_id`
+	unpriced_request_count, pricing_partial_count,
+	0 AS affinity_pinned_count, 0 AS affinity_hit_count, channel_id, credential_id`
 
 const decisionRequestProjection = `completed_at_ms - completed_at_ms % ? AS bucket_start_ms,
 	decision_group_id AS group_id, access_key_id, decision_model AS model,
@@ -73,6 +74,7 @@ const decisionRequestProjection = `completed_at_ms - completed_at_ms % ? AS buck
 	decision_cost_nano_usd AS estimated_cost_nano_usd, 0 AS usage_missing_count, 0 AS partial_count,
 	CASE WHEN decision_pricing_completeness = 'unavailable' AND NOT (cost_state = 'unpriced' AND usage_state IN ('complete','partial')) THEN 1 ELSE 0 END AS unpriced_request_count,
 	CASE WHEN decision_pricing_completeness = 'partial' AND pricing_completeness <> 'partial' THEN 1 ELSE 0 END AS pricing_partial_count,
+	0 AS affinity_pinned_count, 0 AS affinity_hit_count,
 	? + 0 AS bucket_alignment_ms`
 
 func decisionRequestScope(db *gorm.DB, input UsageQuery, groupIDs ...uint) *gorm.DB {

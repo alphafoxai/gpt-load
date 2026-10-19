@@ -725,11 +725,15 @@ func (handler *Handler) Handle(ginContext *gin.Context) {
 				IdentityGeneration: binding.IdentityGeneration,
 			},
 		}
+		recorder.setAffinityPinned()
 	} else {
 		requestAffinity = handler.resolveRequestAffinity(
 			snapshot, accessKey.ID, selectedRoute.Protocol, metadata.AffinityPrefix, allowedCredentialRefs, metadata.PromptCacheKey,
 		)
 		query.PreferredCredentialID = requestAffinity.preferredCredentialID
+		if requestAffinity.observation.Found() {
+			recorder.setAffinityPinned()
+		}
 	}
 	iterator := scheduler.New(snapshot, handler.registry, query)
 	handler.executeAttempts(

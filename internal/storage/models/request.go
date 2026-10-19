@@ -36,6 +36,7 @@ type RequestLog struct {
 	ErrorSummary                string              `gorm:"type:text;not null"`
 	AffinityHit                 bool                `gorm:"not null;default:false"`
 	AffinityKind                string              `gorm:"type:varchar(32);not null;default:''"`
+	AffinityPinned              bool                `gorm:"not null;default:false"`
 	ReasoningMode               string              `gorm:"type:varchar(64);not null;default:''"`
 	ReasoningEffort             string              `gorm:"type:varchar(64);not null;default:''"`
 	ReasoningBudgetTokens       *int64              `gorm:"column:reasoning_budget_tokens"`
@@ -141,6 +142,8 @@ type UsageAggregationJournal struct {
 	PartialCount            int64  `gorm:"not null;check:chk_usage_journal_partial,partial_count >= 0"`
 	UnpricedRequestCount    int64  `gorm:"not null;check:chk_usage_journal_unpriced,unpriced_request_count >= 0"`
 	PricingPartialCount     int64  `gorm:"not null;check:chk_usage_journal_pricing_partial,pricing_partial_count >= 0"`
+	AffinityPinnedCount     int64  `gorm:"not null;default:0;check:chk_usage_journal_affinity_pinned,affinity_pinned_count >= 0"`
+	AffinityHitCount        int64  `gorm:"not null;default:0;check:chk_usage_journal_affinity_hit,affinity_hit_count >= 0"`
 	Applied                 bool   `gorm:"not null;default:false;check:chk_usage_journal_applied,applied IN (TRUE, FALSE);index:idx_usage_aggregation_journal_pending_bucket,priority:1"`
 }
 
@@ -172,4 +175,7 @@ type UsageStat struct {
 	PartialCount            int64  `gorm:"not null;default:0;check:chk_usage_stat_partial,partial_count >= 0"`
 	UnpricedRequestCount    int64  `gorm:"not null;default:0;check:chk_usage_stat_unpriced,unpriced_request_count >= 0"`
 	PricingPartialCount     int64  `gorm:"not null;default:0;check:chk_usage_stat_pricing_partial,pricing_partial_count >= 0"`
+	// 续接已绑定会话的请求数，以及其中落在原账号的请求数（hit <= pinned 由写入方保证）。
+	AffinityPinnedCount int64 `gorm:"not null;default:0;check:chk_usage_stat_affinity_pinned,affinity_pinned_count >= 0"`
+	AffinityHitCount    int64 `gorm:"not null;default:0;check:chk_usage_stat_affinity_hit,affinity_hit_count >= 0"`
 }

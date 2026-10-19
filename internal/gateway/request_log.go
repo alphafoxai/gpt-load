@@ -78,6 +78,7 @@ type requestRecorder struct {
 	usageDiagnostics     usage.Diagnostics
 	affinityHit          bool
 	affinityKind         string
+	affinityPinned       bool
 	attempts             []telemetry.Attempt
 	attemptPricing       []frozenAttemptPricing
 	pendingPricing       frozenAttemptPricing
@@ -167,6 +168,7 @@ func (recorder *requestRecorder) emit() {
 		DurationMs:            duration.Milliseconds(),
 		AffinityHit:           recorder.affinityHit,
 		AffinityKind:          recorder.affinityKind,
+		AffinityPinned:        recorder.affinityPinned,
 		Reasoning:             recorder.reasoning,
 		Operation:             recorder.operation,
 		Attempts:              append([]telemetry.Attempt(nil), recorder.attempts...),
@@ -212,10 +214,19 @@ func (recorder *requestRecorder) estimatedCostNanoUSD() int64 {
 	return telemetry.TotalPricing(recorder.usage.Pricing, recorder.autoDecision, recorder.audit).EstimatedCostNanoUSD
 }
 
+// setAffinityPinned 记录请求续接了一个已绑定账号的会话。
+func (recorder *requestRecorder) setAffinityPinned() {
+	if recorder != nil {
+		recorder.affinityPinned = true
+	}
+}
+
+// setAffinityHit 只记录命中；命中必然发生在已绑定的会话上，所以同时标记 pinned。
 func (recorder *requestRecorder) setAffinityHit(hit bool, kind string) {
 	if recorder != nil && hit {
 		recorder.affinityHit = true
 		recorder.affinityKind = kind
+		recorder.affinityPinned = true
 	}
 }
 

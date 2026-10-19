@@ -56,5 +56,6 @@ func auditRequestScope(db *gorm.DB, input UsageQuery, groupIDs ...uint) *gorm.DB
  0 AS uncached_input_tokens, 0 AS cache_read_tokens, 0 AS cache_write_5m_tokens, 0 AS cache_write_1h_tokens,
  0 AS cache_write_unknown_tokens, 0 AS output_tokens, estimated_cost_nano_usd,
  0 AS usage_missing_count, 0 AS partial_count, unpriced_request_count, pricing_partial_count,
+ 0 AS affinity_pinned_count, 0 AS affinity_hit_count,
  ? + 0 AS bucket_alignment_ms`, UsageFiveMinuteBucketMS, UsageFiveMinuteBucketMS)
 }

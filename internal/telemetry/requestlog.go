@@ -155,9 +155,12 @@ type RequestEvent struct {
 	DurationMs            int64
 	AffinityHit           bool
 	AffinityKind          string
-	Reasoning             reasoning.Config
-	Attempts              []Attempt
-	Usage                 UsageObservation
+	// AffinityPinned 表示请求到达时会话已有绑定（未过期的亲和记录或 previous_response_id 续接）；
+	// AffinityHit 只可能出现在 AffinityPinned 的请求上。
+	AffinityPinned bool
+	Reasoning      reasoning.Config
+	Attempts       []Attempt
+	Usage          UsageObservation
 	// RequestBody 只在访问密钥开启请求内容记录时携带，是网关收到并解码后的客户端原始请求体。
 	RequestBody []byte
 }

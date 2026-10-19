@@ -41,6 +41,7 @@ func TestResponsesContinuationPinsCredentialWithoutSoftAffinity(t *testing.T) {
 
 			assertAffinityAttemptKeys(t, forwarder.inputs, []string{"sk-one", "sk-one", "sk-two"})
 			assertAffinityHits(t, sink.snapshot(), []bool{false, true, false})
+			assertAffinityPinned(t, sink.snapshot(), []bool{false, true, false})
 			if sink.snapshot()[1].AffinityKind != telemetry.AffinityResponseContinuity {
 				t.Fatal("missing continuation kind")
 			}

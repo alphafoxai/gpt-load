@@ -1,11 +1,18 @@
 <script setup lang="ts">
-import { Activity, CircleCheck, Coins, Database, Layers2 } from '@lucide/vue'
+import { Activity, CircleCheck, Coins, Database, Layers2, Magnet } from '@lucide/vue'
 import { computed, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { UsageAggregate, UsageReport } from '@modern/api/usage'
 import { AppIcon, AppTooltip } from '@modern/components/ui'
 import { formatCompactNumber } from '@modern/components/ui/format'
-import { inputTokens, cacheRate, formatUsageCost, successRate, percentage } from './usage-display'
+import {
+  inputTokens,
+  cacheRate,
+  formatUsageCost,
+  stickyRate,
+  successRate,
+  percentage,
+} from './usage-display'
 import UsageMetricGraphic from './UsageMetricGraphic.vue'
 
 const props = defineProps<{ report: UsageReport }>()
@@ -17,10 +24,18 @@ const cost = (row: UsageAggregate) =>
     ? '—'
     : formatUsageCost(row.estimated_cost_nano_usd, locale.value)
 interface UsageCard {
-  id: 'requests' | 'success' | 'tokens' | 'cache' | 'cost'
+  id: 'requests' | 'success' | 'tokens' | 'cache' | 'sticky' | 'cost'
   icon: Component
   value: string
   detail: string
+}
+const hints: Partial<Record<UsageCard['id'], string>> = {
+  cache: 'usage.cacheHint',
+  sticky: 'usage.stickyHint',
+}
+const hintOf = (id: UsageCard['id']) => {
+  const key = hints[id]
+  return key ? t(key) : undefined
 }
 const cards = computed<UsageCard[]>(() => {
   const row = report.value?.summary
@@ -58,6 +73,15 @@ const cards = computed<UsageCard[]>(() => {
       detail: t('usage.cacheDetail', { count: compact(row.cache_read_tokens) }),
     },
     {
+      id: 'sticky',
+      icon: Magnet,
+      value: percentage(stickyRate(row), locale.value),
+      detail: t('usage.stickyDetail', {
+        hits: compact(row.affinity_hit_count),
+        pinned: compact(row.affinity_pinned_count),
+      }),
+    },
+    {
       id: 'cost',
       icon: Coins,
       value: cost(row),
@@ -78,8 +102,8 @@ const cards = computed<UsageCard[]>(() => {
     <article v-for="card in cards" :key="card.id" class="modern-usage-stat" :data-kind="card.id">
       <div class="modern-usage-stat-label">
         <span class="modern-usage-stat-symbol"><AppIcon :icon="card.icon" size="sm" /></span>
-        <AppTooltip :label="card.id === 'cache' ? t('usage.cacheHint') : undefined" touchable>
-          <span :tabindex="card.id === 'cache' ? 0 : undefined">
+        <AppTooltip :label="hintOf(card.id)" touchable>
+          <span :tabindex="hints[card.id] ? 0 : undefined">
             {{ t('usage.' + card.id) }}
           </span>
         </AppTooltip>
@@ -97,7 +121,7 @@ const cards = computed<UsageCard[]>(() => {
 <style scoped>
 .modern-usage-metrics {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: var(--modern-space-3);
 }
 .modern-usage-stat {
@@ -132,7 +156,8 @@ const cards = computed<UsageCard[]>(() => {
   --modern-usage-stat-tone: var(--modern-chart-input);
 }
 .modern-usage-stat[data-kind='success'],
-.modern-usage-stat[data-kind='cache'] {
+.modern-usage-stat[data-kind='cache'],
+.modern-usage-stat[data-kind='sticky'] {
   --modern-usage-stat-tone: var(--modern-chart-cache);
 }
 .modern-usage-stat[data-kind='cost'] {
@@ -187,15 +212,13 @@ const cards = computed<UsageCard[]>(() => {
   font-size: var(--modern-font-size-small);
   line-height: var(--modern-leading-compact);
 }
-@media (max-width: 1150px) {
+/* 六张卡片在一行时每张约 230px，只在宽屏放得下数值和图形；其余桌面宽度排成 3×2。 */
+@media (max-width: 1700px) {
   .modern-usage-metrics {
     grid-template-columns: repeat(6, minmax(0, 1fr));
   }
   .modern-usage-stat {
     grid-column: span 2;
-  }
-  .modern-usage-stat:nth-last-child(-n + 2) {
-    grid-column: span 3;
   }
 }
 @media (max-width: 760px) {
@@ -207,9 +230,6 @@ const cards = computed<UsageCard[]>(() => {
     grid-column: auto;
     gap: var(--modern-space-2);
     padding: var(--modern-space-3);
-  }
-  .modern-usage-stat:last-child {
-    grid-column: 1 / -1;
   }
   .modern-usage-stat-label {
     gap: var(--modern-space-1-5);
@@ -226,18 +246,6 @@ const cards = computed<UsageCard[]>(() => {
   .modern-usage-stat-detail {
     font-size: var(--modern-font-size-caption);
     overflow-wrap: anywhere;
-  }
-  .modern-usage-stat[data-kind='cost'] {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    align-items: center;
-  }
-  .modern-usage-stat[data-kind='cost'] .modern-usage-stat-value {
-    justify-content: flex-end;
-    text-align: right;
-  }
-  .modern-usage-stat[data-kind='cost'] .modern-usage-stat-detail {
-    grid-column: 1 / -1;
   }
 }
 @container usage-stat (max-width: 164px) {

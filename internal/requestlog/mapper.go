@@ -205,6 +205,7 @@ func mapEvent(
 		ErrorSummary:                sanitizeSummary(redactor, event.ErrorSummary),
 		AffinityHit:                 event.AffinityHit,
 		AffinityKind:                event.AffinityKind,
+		AffinityPinned:              event.AffinityPinned,
 		ReasoningMode:               event.Reasoning.Mode,
 		ReasoningEffort:             event.Reasoning.Effort,
 		ReasoningBudgetTokens:       event.Reasoning.BudgetTokens,

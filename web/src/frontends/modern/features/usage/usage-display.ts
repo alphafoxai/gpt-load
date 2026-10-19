@@ -9,6 +9,11 @@ export function inputTokens(row: UsageAggregate): number {
 export function cacheRate(row: UsageAggregate): number | null {
   return inputTokens(row) ? (row.cache_read_tokens / inputTokens(row)) * 100 : null
 }
+export function stickyRate(row: UsageAggregate): number | null {
+  return row.affinity_pinned_count
+    ? (row.affinity_hit_count / row.affinity_pinned_count) * 100
+    : null
+}
 export function successRate(row: UsageAggregate): number | null {
   return row.request_count ? (row.success_count / row.request_count) * 100 : null
 }

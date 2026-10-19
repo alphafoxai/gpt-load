@@ -2,16 +2,21 @@
 import { computed } from 'vue'
 import type { UsageReport } from '@modern/api/usage'
 import { AppSvg } from '@modern/components/ui'
-import { cacheRate, chartPoints, successRate } from './usage-display'
+import { cacheRate, chartPoints, stickyRate, successRate } from './usage-display'
 import type { TrendMetric } from './usage-state'
 
-const props = defineProps<{ report: UsageReport; metric: TrendMetric | 'success' }>()
-const rate = computed(() => props.metric === 'success' || props.metric === 'cache')
-const ratio = computed(() =>
-  props.metric === 'success' ? successRate(props.report.summary) : cacheRate(props.report.summary),
+const props = defineProps<{ report: UsageReport; metric: TrendMetric | 'success' | 'sticky' }>()
+const rate = computed(
+  () => props.metric === 'success' || props.metric === 'cache' || props.metric === 'sticky',
 )
+const ratio = computed(() => {
+  const row = props.report.summary
+  if (props.metric === 'success') return successRate(row)
+  if (props.metric === 'sticky') return stickyRate(row)
+  return cacheRate(row)
+})
 const paths = computed(() => {
-  if (props.metric === 'success' || props.metric === 'cache') return []
+  if (props.metric === 'success' || props.metric === 'cache' || props.metric === 'sticky') return []
   const points = chartPoints(props.report, props.metric)
   const peak = Math.max(0, ...points.map((point) => point.value ?? 0)) || 1
   const result: { line: string; area: string }[] = []

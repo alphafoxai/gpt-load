@@ -180,6 +180,8 @@ func validateUsageIntegrity(scope *gorm.DB, bucketAlignmentMS int64) error {
 			WHEN request_count < 0 OR success_count < 0 OR failure_count < 0
 					OR usage_missing_count < 0 OR partial_count < 0 OR unpriced_request_count < 0
 					OR pricing_partial_count < 0
+					OR affinity_hit_count < 0 OR affinity_hit_count > affinity_pinned_count
+					OR affinity_pinned_count > request_count
 				OR CASE
 					WHEN request_count < success_count THEN 1
 					WHEN request_count - success_count != failure_count THEN 1
@@ -394,6 +396,8 @@ func addUsageAggregates(left, right UsageAggregate) (UsageAggregate, error) {
 		{"partial count", left.PartialCount, right.PartialCount, &result.PartialCount},
 		{"unpriced request count", left.UnpricedRequestCount, right.UnpricedRequestCount, &result.UnpricedRequestCount},
 		{"pricing partial count", left.PricingPartialCount, right.PricingPartialCount, &result.PricingPartialCount},
+		{"affinity pinned count", left.AffinityPinnedCount, right.AffinityPinnedCount, &result.AffinityPinnedCount},
+		{"affinity hit count", left.AffinityHitCount, right.AffinityHitCount, &result.AffinityHitCount},
 	}
 	for _, field := range fields {
 		value, ok := usage.CheckedAdd(field.left, field.right)
@@ -477,6 +481,8 @@ func validateUsageAggregate(aggregate UsageAggregate) error {
 		{"partial count", aggregate.PartialCount},
 		{"unpriced request count", aggregate.UnpricedRequestCount},
 		{"pricing partial count", aggregate.PricingPartialCount},
+		{"affinity pinned count", aggregate.AffinityPinnedCount},
+		{"affinity hit count", aggregate.AffinityHitCount},
 	}
 	for _, field := range fields {
 		if field.value < 0 {
@@ -486,6 +492,10 @@ func validateUsageAggregate(aggregate UsageAggregate) error {
 	requestCount, ok := usage.CheckedAdd(aggregate.SuccessCount, aggregate.FailureCount)
 	if !ok || requestCount != aggregate.RequestCount {
 		return fmt.Errorf("request count does not equal success plus failure")
+	}
+	if aggregate.AffinityHitCount > aggregate.AffinityPinnedCount ||
+		aggregate.AffinityPinnedCount > aggregate.RequestCount {
+		return fmt.Errorf("affinity counts exceed their totals")
 	}
 	if _, err := usageAggregateTotalTokens(aggregate); err != nil {
 		return err
@@ -530,7 +540,9 @@ const usageAggregateSelect = "" +
 	"COALESCE(SUM(usage_missing_count), 0) AS usage_missing_count, " +
 	"COALESCE(SUM(partial_count), 0) AS partial_count, " +
 	"COALESCE(SUM(unpriced_request_count), 0) AS unpriced_request_count, " +
-	"COALESCE(SUM(pricing_partial_count), 0) AS pricing_partial_count"
+	"COALESCE(SUM(pricing_partial_count), 0) AS pricing_partial_count, " +
+	"COALESCE(SUM(affinity_pinned_count), 0) AS affinity_pinned_count, " +
+	"COALESCE(SUM(affinity_hit_count), 0) AS affinity_hit_count"
 
 const usageDistributionTotalTokensExpression = "" +
 	"COALESCE(SUM(uncached_input_tokens), 0) + " +

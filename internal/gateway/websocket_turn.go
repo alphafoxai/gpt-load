@@ -321,6 +321,9 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 	if requiredRef == nil {
 		query.PreferredCredentialID = affinity.preferredCredentialID
 	}
+	if requiredRef != nil || affinity.observation.Found() {
+		recorder.setAffinityPinned()
+	}
 	iterator := scheduler.New(snapshot, h.registry, query)
 	redactionCipher, err := h.encryption.NewRedactionCipher(key.ID)
 	if err != nil {

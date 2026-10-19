@@ -41,6 +41,8 @@ type usageAggregateResponse struct {
 	PartialCount            int64  `json:"partial_count"`
 	UnpricedRequestCount    int64  `json:"unpriced_request_count"`
 	PricingPartialCount     int64  `json:"pricing_partial_count"`
+	AffinityPinnedCount     int64  `json:"affinity_pinned_count"`
+	AffinityHitCount        int64  `json:"affinity_hit_count"`
 }
 
 type usageSeriesResponse struct {
@@ -528,6 +530,7 @@ func mapUsageAggregate(source requestlog.UsageAggregate) (usageAggregateResponse
 		source.CacheWriteUnknownTokens, source.PartialCount, source.UnpricedRequestCount,
 		source.PricingPartialCount,
 	}
+	values = append(values, source.AffinityPinnedCount, source.AffinityHitCount)
 	for _, value := range values {
 		if value < 0 || value > maxSafeInteger {
 			return usageAggregateResponse{}, fmt.Errorf("map usage aggregate: unsafe integer")
@@ -557,6 +560,8 @@ func mapUsageAggregate(source requestlog.UsageAggregate) (usageAggregateResponse
 		UsageMissingCount:    source.UsageMissingCount, PartialCount: source.PartialCount,
 		UnpricedRequestCount: source.UnpricedRequestCount,
 		PricingPartialCount:  source.PricingPartialCount,
+		AffinityPinnedCount:  source.AffinityPinnedCount,
+		AffinityHitCount:     source.AffinityHitCount,
 	}, nil
 }
 
