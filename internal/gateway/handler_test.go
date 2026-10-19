@@ -5322,29 +5322,7 @@ func newHandlerForTestWithStats(
 	gin.SetMode(gin.TestMode)
 	keyService := encryptiontest.Service(t, "handler-test-master-key")
 	manager := state.NewManager()
-	credentialConfigs := make([]state.CredentialConfig, 0, len(upstreamKeys))
-	for index := range upstreamKeys {
-		credentialConfigs = append(credentialConfigs, state.CredentialConfig{
-			ID:                 uint(index + 1),
-			GroupID:            1,
-			Status:             state.CredentialStatusActive,
-			Version:            1,
-			IdentityGeneration: uint64(index + 1),
-			Fingerprint:        fmt.Sprintf("credential-%d", index+1),
-		})
-	}
-	if _, err := manager.Publish(state.CompileInput{
-		ChannelRegistry: channel.NewRegistry(),
-		Groups: []state.GroupConfig{{ConnectionType: "api_key", ID: 1, Name: "openai", ChannelID: channel.OpenAI,
-			Params: json.RawMessage(`{}`),
-			Models: []state.ModelConfig{{ID: "gpt-4o"}}, Enabled: true,
-		}},
-		Credentials: credentialConfigs,
-		AccessKeys: []state.AccessKeyConfig{{
-			ID: 1, Name: "client", KeyHash: keyService.Hash("gl-client"),
-			Status: state.AccessKeyStatusActive,
-		}},
-	}); err != nil {
+	if _, err := manager.Publish(handlerTestCompileInput(keyService, len(upstreamKeys))); err != nil {
 		t.Fatalf("Publish() error = %v", err)
 	}
 	registry := state.NewCredentialRegistry()
@@ -5377,6 +5355,34 @@ func newHandlerForTestWithStats(
 	)
 
 	return handler, manager, registry
+}
+
+// handlerTestCompileInput is the runtime configuration behind newHandlerForTest:
+// one OpenAI group with credentialCount credentials and one access key.
+func handlerTestCompileInput(keyService encryption.Service, credentialCount int) state.CompileInput {
+	credentialConfigs := make([]state.CredentialConfig, 0, credentialCount)
+	for index := range credentialCount {
+		credentialConfigs = append(credentialConfigs, state.CredentialConfig{
+			ID:                 uint(index + 1),
+			GroupID:            1,
+			Status:             state.CredentialStatusActive,
+			Version:            1,
+			IdentityGeneration: uint64(index + 1),
+			Fingerprint:        fmt.Sprintf("credential-%d", index+1),
+		})
+	}
+	return state.CompileInput{
+		ChannelRegistry: channel.NewRegistry(),
+		Groups: []state.GroupConfig{{ConnectionType: "api_key", ID: 1, Name: "openai", ChannelID: channel.OpenAI,
+			Params: json.RawMessage(`{}`),
+			Models: []state.ModelConfig{{ID: "gpt-4o"}}, Enabled: true,
+		}},
+		Credentials: credentialConfigs,
+		AccessKeys: []state.AccessKeyConfig{{
+			ID: 1, Name: "client", KeyHash: keyService.Hash("gl-client"),
+			Status: state.AccessKeyStatusActive,
+		}},
+	}
 }
 
 func newConvertedFallbackHandlerTestRuntime(

@@ -153,3 +153,33 @@ func TestCacheConfigureClearsEntriesAndRejectsOlderRevision(t *testing.T) {
 		t.Fatal("configured TTL was not enforced")
 	}
 }
+
+func TestCacheConfigureKeepsEntriesWhenOnlyRevisionAdvances(t *testing.T) {
+	cache := newCache(2, time.Hour, time.Now)
+	key := Key("conversation")
+	pinned := Target{GroupID: 1, CredentialID: 11, IdentityGeneration: 101}
+	if !cache.Configure(1, 2, time.Hour) {
+		t.Fatal("Configure(1) = false")
+	}
+	if !cache.RecordSuccess(key, cache.Lookup(key), pinned) {
+		t.Fatal("RecordSuccess() = false")
+	}
+	inFlight := cache.Lookup(key)
+
+	if !cache.Configure(2, 2, time.Hour) {
+		t.Fatal("Configure(2) with the same capacity and TTL = false")
+	}
+	if got := cache.Lookup(key); !got.Found() || got.Target != pinned {
+		t.Fatalf("Lookup() after an unrelated revision = %#v, want %#v", got, pinned)
+	}
+	if !cache.Configure(1, 2, time.Hour) {
+		t.Fatal("a request still on the older revision lost affinity under the same policy")
+	}
+	fallback := Target{GroupID: 1, CredentialID: 12, IdentityGeneration: 102}
+	if !cache.RecordSuccess(key, inFlight, fallback) {
+		t.Fatal("a request observed before the revision could not record its fallback success")
+	}
+	if got := cache.Lookup(key); got.Target != fallback {
+		t.Fatalf("Lookup() = %#v, want fallback %#v", got, fallback)
+	}
+}

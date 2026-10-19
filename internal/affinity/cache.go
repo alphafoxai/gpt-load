@@ -24,11 +24,11 @@ func (target Target) Valid() bool {
 
 // Observation is a versioned cache lookup used for conditional success updates.
 type Observation struct {
-	Target   Target
-	key      Key
-	revision uint64
-	version  uint64
-	found    bool
+	Target  Target
+	key     Key
+	epoch   uint64
+	version uint64
+	found   bool
 }
 
 func (observation Observation) Found() bool {
@@ -44,13 +44,16 @@ type cacheEntry struct {
 
 // Cache is a bounded, process-local soft-affinity cache.
 type Cache struct {
-	mu          sync.Mutex
-	entries     map[Key]*list.Element
-	recent      list.List
-	capacity    int
-	ttl         time.Duration
-	now         func() time.Time
-	revision    uint64
+	mu       sync.Mutex
+	entries  map[Key]*list.Element
+	recent   list.List
+	capacity int
+	ttl      time.Duration
+	now      func() time.Time
+	revision uint64
+	// epoch advances only when Configure clears the entries, so a success
+	// observed before a clear cannot write into the new policy.
+	epoch       uint64
 	nextVersion uint64
 }
 
@@ -67,24 +70,30 @@ func newCache(capacity int, ttl time.Duration, now func() time.Time) *Cache {
 	}
 }
 
-// Configure applies one frozen runtime configuration revision. Moving to a
-// newer revision clears entries so changed TTL, capacity, and group policy
-// take effect atomically. Older requests cannot restore stale configuration.
+// Configure applies one frozen runtime configuration revision. The control
+// plane republishes the snapshot on every write (an access key, a group, a
+// proxy), so a newer revision with the same capacity and TTL keeps the learned
+// mappings: callers revalidate group policy and credential identity against
+// their own snapshot on every lookup. Only a capacity or TTL change clears the
+// entries. A request still holding an older revision may use the cache while
+// the policy matches, but cannot restore an older policy.
 func (cache *Cache) Configure(revision uint64, capacity int, ttl time.Duration) bool {
 	if cache == nil || revision == 0 || capacity <= 0 || ttl <= 0 || cache.now == nil {
 		return false
 	}
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
-	if revision < cache.revision {
-		return false
-	}
-	if revision == cache.revision {
-		return cache.capacity == capacity && cache.ttl == ttl
+	samePolicy := cache.capacity == capacity && cache.ttl == ttl
+	if revision <= cache.revision {
+		return samePolicy
 	}
 	cache.revision = revision
+	if samePolicy {
+		return true
+	}
 	cache.capacity = capacity
 	cache.ttl = ttl
+	cache.epoch++
 	cache.entries = make(map[Key]*list.Element)
 	cache.recent.Init()
 	return true
@@ -98,12 +107,12 @@ func (cache *Cache) Lookup(key Key) Observation {
 	defer cache.mu.Unlock()
 	element := cache.currentElementLocked(key, cache.now())
 	if element == nil {
-		return Observation{key: key, revision: cache.revision}
+		return Observation{key: key, epoch: cache.epoch}
 	}
 	cache.recent.MoveToFront(element)
 	entry := element.Value.(*cacheEntry)
 	return Observation{
-		Target: entry.target, key: key, revision: cache.revision,
+		Target: entry.target, key: key, epoch: cache.epoch,
 		version: entry.version, found: true,
 	}
 }
@@ -120,7 +129,7 @@ func (cache *Cache) RecordSuccess(key Key, observed Observation, target Target) 
 
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
-	if cache.capacity <= 0 || cache.ttl <= 0 || observed.revision != cache.revision {
+	if cache.capacity <= 0 || cache.ttl <= 0 || observed.epoch != cache.epoch {
 		return false
 	}
 	now := cache.now()

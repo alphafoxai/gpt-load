@@ -47,6 +47,33 @@ func TestHandlerLearnsAndReusesAutomaticSoftAffinity(t *testing.T) {
 	assertAffinityHits(t, sink.snapshot(), []bool{false, true})
 }
 
+// Every control-plane write republishes the snapshot. Creating an access key for
+// another customer must not move this conversation off the account that holds
+// its prompt cache.
+func TestHandlerKeepsSoftAffinityAcrossUnrelatedConfigPublish(t *testing.T) {
+	forwarder := &scriptedForwarder{results: successfulAffinityResults(2)}
+	handler, manager, _ := newHandlerForTest(t, forwarder, "sk-one", "sk-two")
+	sink := &recordingRequestLogSink{}
+	handler.requestLogSink = sink
+	engine := newAffinityTestEngine(t, handler)
+	body := `{"model":"gpt-4o","messages":[{"role":"user","content":"stable conversation"}]}`
+
+	serveAffinityRequest(t, engine, body)
+	before := manager.Current().Revision
+	input := handlerTestCompileInput(handler.encryption, 2)
+	input.AccessKeys = append(input.AccessKeys, state.AccessKeyConfig{
+		ID: 2, Name: "another-customer", KeyHash: handler.encryption.Hash("gl-another"),
+		Status: state.AccessKeyStatusActive,
+	})
+	if published, err := manager.Publish(input); err != nil || published.Revision <= before {
+		t.Fatalf("Publish() = %#v, %v; want a newer revision than %d", published, err, before)
+	}
+	serveAffinityRequest(t, engine, body)
+
+	assertAffinityAttemptKeys(t, forwarder.inputs, []string{"sk-one", "sk-one"})
+	assertAffinityHits(t, sink.snapshot(), []bool{false, true})
+}
+
 func TestHandlerReusesSoftAffinityAcrossModelsWithSameCandidateRange(t *testing.T) {
 	forwarder := &scriptedForwarder{results: successfulAffinityResults(2)}
 	handler, manager, _ := newHandlerForTest(t, forwarder, "sk-one", "sk-two")
