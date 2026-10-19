@@ -55,7 +55,9 @@ func verifyMigrationValidationQueryLimits(t *testing.T, db *gorm.DB) {
 		t.Fatalf("initialize schema: %v", err)
 	}
 	t.Logf("driver=%s phase=initialize total=%d current_database=%d information_schema=%d", db.Dialector.Name(), initialize.total, initialize.currentDatabase, initialize.informationSchema)
-	initialLimit := 1000
+	// 0032 adds a table with one index and three check constraints: it costs about
+	// 20 initialization statements (983 before it) and 6 per restart.
+	initialLimit := 1050
 	if db.Dialector.Name() == "mysql" {
 		initialLimit = 1800
 	}
