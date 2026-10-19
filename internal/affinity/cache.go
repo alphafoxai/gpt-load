@@ -62,6 +62,7 @@ type Cache struct {
 	// observed before a clear cannot write into the new policy.
 	epoch       uint64
 	nextVersion uint64
+	persister   *Persister
 }
 
 func NewCache() *Cache {
@@ -82,8 +83,8 @@ func newCache(capacity int, ttl time.Duration, now func() time.Time) *Cache {
 // proxy), so a newer revision with the same capacity and TTL keeps the learned
 // mappings: callers revalidate group policy and credential identity against
 // their own snapshot on every lookup. Only a capacity or TTL change clears the
-// entries. A request still holding an older revision may use the cache while
-// the policy matches, but cannot restore an older policy.
+// entries and persisted copies. A request still holding an older revision may use
+// the cache while the policy matches, but cannot restore an older policy.
 func (cache *Cache) Configure(revision uint64, capacity int, ttl time.Duration) bool {
 	if cache == nil || revision == 0 || capacity <= 0 || ttl <= 0 || cache.now == nil {
 		return false
@@ -103,6 +104,9 @@ func (cache *Cache) Configure(revision uint64, capacity int, ttl time.Duration) 
 	cache.epoch++
 	cache.entries = make(map[Key]*list.Element)
 	cache.recent.Init()
+	if cache.persister != nil {
+		cache.persister.clear()
+	}
 	return true
 }
 
@@ -162,6 +166,7 @@ func (cache *Cache) RecordSuccess(key Key, observed Observation, target Target) 
 	entry.target = target
 	entry.version = cache.nextVersion
 	entry.expiresAt = now.Add(cache.ttl)
+	cache.journalLocked(key, target, entry.expiresAt, now)
 	cache.recent.MoveToFront(element)
 	return true
 }
@@ -204,6 +209,7 @@ func (cache *Cache) insertLocked(key Key, target Target, now time.Time) bool {
 		expiresAt: now.Add(cache.ttl),
 	}
 	cache.entries[key] = cache.recent.PushFront(entry)
+	cache.journalLocked(key, target, entry.expiresAt, now)
 	return true
 }
 

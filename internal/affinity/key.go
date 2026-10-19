@@ -9,6 +9,10 @@ import (
 
 const keyDomain = "gpt-load/affinity/prompt-prefix-hmac/v2"
 
+// MaxKeyLength bounds a persisted key. Hasher.Hash is a hex-encoded HMAC-SHA256
+// digest in production, so every derived key is 64 bytes.
+const MaxKeyLength = 64
+
 // Key is an opaque, tenant-scoped affinity cache key.
 type Key string
 
