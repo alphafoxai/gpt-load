@@ -81,6 +81,9 @@ func BuildContainer() (*dig.Container, error) {
 			return limiter
 		},
 		func(handler *gateway.Handler) app.LiveSessionRuntime { return handler },
+		func(db *gorm.DB, handler *gateway.Handler, manager *state.Manager) app.AffinityPersistence {
+			return newAffinityPersistence(handler.AffinityCache(), storage.NewAffinityBindingStore(db), manager)
+		},
 		func(limiter *ratelimit.AccessKeyRPM) gateway.AccessKeyRPMLimiter {
 			return limiter
 		},

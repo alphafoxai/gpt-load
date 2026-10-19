@@ -89,3 +89,12 @@ func (handler *Handler) recordAffinitySuccess(
 		},
 	)
 }
+
+// AffinityCache exposes the soft-affinity cache so the process can attach
+// write-behind persistence before the handler serves requests.
+func (handler *Handler) AffinityCache() *affinity.Cache {
+	if handler == nil {
+		return nil
+	}
+	return handler.affinityCache
+}

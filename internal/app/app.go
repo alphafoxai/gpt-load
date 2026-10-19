@@ -38,6 +38,7 @@ type App struct {
 	requestLogs       RequestLogRuntime
 	executionRuntime  ExecutionRuntime
 	liveSessions      LiveSessionRuntime
+	affinityBindings  AffinityPersistence
 	listen            func(network, address string) (net.Listener, error)
 
 	mu            sync.Mutex
@@ -86,6 +87,14 @@ type LiveSessionRuntime interface {
 	CloseCodexLive()
 }
 
+// AffinityPersistence restores soft-affinity bindings under the live config
+// policy before serving starts, and flushes pending writes on shutdown.
+type AffinityPersistence interface {
+	Restore(context.Context) (int, error)
+	Start()
+	Stop(context.Context) error
+}
+
 // AppParams defines dependencies injected into App.
 type AppParams struct {
 	dig.In
@@ -100,8 +109,9 @@ type AppParams struct {
 	Lifecycle         *httplifecycle.Coordinator `optional:"true"`
 	ControlRuntime    ControlRuntime
 	RequestLogs       RequestLogRuntime
-	ExecutionRuntime  ExecutionRuntime   `optional:"true"`
-	LiveSessions      LiveSessionRuntime `optional:"true"`
+	ExecutionRuntime  ExecutionRuntime    `optional:"true"`
+	LiveSessions      LiveSessionRuntime  `optional:"true"`
+	AffinityBindings  AffinityPersistence `optional:"true"`
 }
 
 // NewEngine creates the process HTTP engine and global middleware.
@@ -152,6 +162,7 @@ func NewApp(params AppParams) *App {
 		requestLogs:       params.RequestLogs,
 		executionRuntime:  params.ExecutionRuntime,
 		liveSessions:      params.LiveSessions,
+		affinityBindings:  params.AffinityBindings,
 		listen:            net.Listen,
 		serveErrors:       make(chan error, 1),
 	}
@@ -195,6 +206,16 @@ func (a *App) Start() error {
 		} else {
 			logrus.WithField("event", "startup.checkpoint_restore").Info("runtime state checkpoint checked")
 		}
+	}
+	if a.affinityBindings != nil {
+		restored, err := a.affinityBindings.Restore(context.Background())
+		fields := logrus.Fields{"event": "startup.affinity_restore", "restored": restored}
+		if err != nil {
+			logrus.WithError(err).WithFields(fields).Warn("affinity bindings restore failed; continuing with an empty cache")
+		} else {
+			logrus.WithFields(fields).Info("affinity bindings restored")
+		}
+		a.affinityBindings.Start()
 	}
 	if a.executionRuntime != nil {
 		if err := a.executionRuntime.Start(context.Background()); err != nil {
@@ -293,6 +314,7 @@ func (a *App) Stop(ctx context.Context) error {
 	liveSessions := a.liveSessions
 	runtimeCheckpoint := a.runtimeCheckpoint
 	lifecycle := a.lifecycle
+	affinityBindings := a.affinityBindings
 	a.mu.Unlock()
 
 	var errs []error
@@ -355,6 +377,17 @@ func (a *App) Stop(ctx context.Context) error {
 		}
 		if waitErr == nil {
 			logrus.WithField("event", "shutdown.http_handlers_drained").Info("HTTP handlers drained")
+		}
+	}
+	if affinityBindings != nil {
+		if err := affinityBindings.Stop(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("flush affinity bindings: %w", err))
+			logrus.WithError(err).WithFields(logrus.Fields{
+				"event":   "shutdown.affinity_flush",
+				"outcome": "forced",
+			}).Warn("affinity bindings were not fully flushed before shutdown deadline")
+		} else {
+			logrus.WithField("event", "shutdown.affinity_flush").Info("affinity bindings flushed")
 		}
 	}
 	if runtimeCheckpoint != nil {
