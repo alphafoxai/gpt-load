@@ -36,22 +36,26 @@ type RequestLog struct {
 	ErrorSummary                string              `gorm:"type:text;not null"`
 	AffinityHit                 bool                `gorm:"not null;default:false"`
 	AffinityKind                string              `gorm:"type:varchar(32);not null;default:''"`
-	AffinityPinned              bool                `gorm:"not null;default:false"`
-	ReasoningMode               string              `gorm:"type:varchar(64);not null;default:''"`
-	ReasoningEffort             string              `gorm:"type:varchar(64);not null;default:''"`
-	ReasoningBudgetTokens       *int64              `gorm:"column:reasoning_budget_tokens"`
-	UncachedInputTokens         int64               `gorm:"column:uncached_input_tokens;not null;default:0;check:chk_request_log_uncached_input,uncached_input_tokens >= 0"`
-	OutputTokens                int64               `gorm:"not null;default:0;check:chk_request_log_output,output_tokens >= 0"`
-	CacheReadTokens             int64               `gorm:"not null;default:0;check:chk_request_log_cache_read,cache_read_tokens >= 0"`
-	CacheWrite5MTokens          int64               `gorm:"column:cache_write_5m_tokens;not null;default:0;check:chk_request_log_cache_write_5m,cache_write_5m_tokens >= 0"`
-	CacheWrite1HTokens          int64               `gorm:"column:cache_write_1h_tokens;not null;default:0;check:chk_request_log_cache_write_1h,cache_write_1h_tokens >= 0"`
-	CacheWriteUnknownTokens     int64               `gorm:"column:cache_write_unknown_tokens;not null;default:0;check:chk_request_log_cache_write_unknown,cache_write_unknown_tokens >= 0"`
-	EstimatedCostNanoUSD        int64               `gorm:"column:estimated_cost_nano_usd;not null;default:0;check:chk_request_log_cost_nano,estimated_cost_nano_usd >= 0"`
-	UsageState                  string              `gorm:"type:varchar(32);not null;default:'not_applicable';check:chk_request_log_usage_state,usage_state IN ('complete','partial','missing','not_applicable')"`
-	CostState                   string              `gorm:"type:varchar(32);not null;default:'not_applicable';check:chk_request_log_cost_state,cost_state IN ('priced','unpriced','not_applicable')"`
-	PricingCompleteness         string              `gorm:"type:varchar(32);not null;default:'not_applicable';check:chk_request_log_pricing_completeness,pricing_completeness IN ('complete','partial','unavailable','not_applicable');check:chk_request_log_usage_pricing_state,(usage_state = 'not_applicable' AND cost_state = 'not_applicable' AND pricing_completeness = 'not_applicable' AND estimated_cost_nano_usd = 0) OR (usage_state = 'missing' AND cost_state = 'unpriced' AND pricing_completeness = 'unavailable' AND estimated_cost_nano_usd = 0) OR (usage_state IN ('complete','partial') AND ((cost_state = 'unpriced' AND pricing_completeness = 'unavailable' AND estimated_cost_nano_usd = 0) OR (cost_state = 'priced' AND pricing_completeness IN ('complete','partial'))))"`
-	AttemptRows                 []RequestLogAttempt `gorm:"-"`
-	RequestBodyRow              *RequestLogBody     `gorm:"-"`
+	// AffinityOutcome 取值见 telemetry.AffinityOutcome；空值表示记录该字段之前的日志。
+	AffinityOutcome         string `gorm:"type:varchar(32);not null;default:''"`
+	ReasoningMode           string `gorm:"type:varchar(64);not null;default:''"`
+	ReasoningEffort         string `gorm:"type:varchar(64);not null;default:''"`
+	ReasoningBudgetTokens   *int64 `gorm:"column:reasoning_budget_tokens"`
+	UncachedInputTokens     int64  `gorm:"column:uncached_input_tokens;not null;default:0;check:chk_request_log_uncached_input,uncached_input_tokens >= 0"`
+	OutputTokens            int64  `gorm:"not null;default:0;check:chk_request_log_output,output_tokens >= 0"`
+	CacheReadTokens         int64  `gorm:"not null;default:0;check:chk_request_log_cache_read,cache_read_tokens >= 0"`
+	CacheWrite5MTokens      int64  `gorm:"column:cache_write_5m_tokens;not null;default:0;check:chk_request_log_cache_write_5m,cache_write_5m_tokens >= 0"`
+	CacheWrite1HTokens      int64  `gorm:"column:cache_write_1h_tokens;not null;default:0;check:chk_request_log_cache_write_1h,cache_write_1h_tokens >= 0"`
+	CacheWriteUnknownTokens int64  `gorm:"column:cache_write_unknown_tokens;not null;default:0;check:chk_request_log_cache_write_unknown,cache_write_unknown_tokens >= 0"`
+	EstimatedCostNanoUSD    int64  `gorm:"column:estimated_cost_nano_usd;not null;default:0;check:chk_request_log_cost_nano,estimated_cost_nano_usd >= 0"`
+	// 缓存读取相对按输入价计费省下的金额，与缓存写入高出输入价的部分；未计价或缺少输入价时为 0，可为负。
+	CacheReadSavingsNanoUSD  int64               `gorm:"column:cache_read_savings_nano_usd;not null;default:0"`
+	CacheWritePremiumNanoUSD int64               `gorm:"column:cache_write_premium_nano_usd;not null;default:0"`
+	UsageState               string              `gorm:"type:varchar(32);not null;default:'not_applicable';check:chk_request_log_usage_state,usage_state IN ('complete','partial','missing','not_applicable')"`
+	CostState                string              `gorm:"type:varchar(32);not null;default:'not_applicable';check:chk_request_log_cost_state,cost_state IN ('priced','unpriced','not_applicable')"`
+	PricingCompleteness      string              `gorm:"type:varchar(32);not null;default:'not_applicable';check:chk_request_log_pricing_completeness,pricing_completeness IN ('complete','partial','unavailable','not_applicable');check:chk_request_log_usage_pricing_state,(usage_state = 'not_applicable' AND cost_state = 'not_applicable' AND pricing_completeness = 'not_applicable' AND estimated_cost_nano_usd = 0) OR (usage_state = 'missing' AND cost_state = 'unpriced' AND pricing_completeness = 'unavailable' AND estimated_cost_nano_usd = 0) OR (usage_state IN ('complete','partial') AND ((cost_state = 'unpriced' AND pricing_completeness = 'unavailable' AND estimated_cost_nano_usd = 0) OR (cost_state = 'priced' AND pricing_completeness IN ('complete','partial'))))"`
+	AttemptRows              []RequestLogAttempt `gorm:"-"`
+	RequestBodyRow           *RequestLogBody     `gorm:"-"`
 }
 
 // RequestLogBody is the recorded client request body of an access key that
@@ -121,30 +125,33 @@ type CredentialAttemptStat struct {
 // aggregation. It is staged, applied, and committed in the same transaction as
 // its RequestLog, and intentionally excludes request and error payloads.
 type UsageAggregationJournal struct {
-	RequestID               string `gorm:"column:request_id;type:varchar(36);primaryKey;not null"`
-	BucketStartMS           int64  `gorm:"column:bucket_start_ms;not null;check:chk_usage_journal_bucket, bucket_start_ms >= 0;index:idx_usage_aggregation_journal_pending_bucket,priority:2"`
-	AccessKeyID             uint   `gorm:"not null"`
-	GroupID                 uint   `gorm:"not null"`
-	ChannelID               string `gorm:"type:varchar(64);not null;default:''"`
-	CredentialID            uint   `gorm:"not null;default:0"`
-	Model                   string `gorm:"type:varchar(255);not null"`
-	RequestCount            int64  `gorm:"not null;check:chk_usage_journal_request_count,request_count = 1;check:chk_usage_journal_request_outcome,request_count = success_count + failure_count"`
-	SuccessCount            int64  `gorm:"not null;check:chk_usage_journal_success_count,success_count >= 0"`
-	FailureCount            int64  `gorm:"not null;check:chk_usage_journal_failure_count,failure_count >= 0"`
-	UncachedInputTokens     int64  `gorm:"column:uncached_input_tokens;not null;check:chk_usage_journal_uncached_input,uncached_input_tokens >= 0"`
-	OutputTokens            int64  `gorm:"not null;check:chk_usage_journal_output,output_tokens >= 0"`
-	CacheReadTokens         int64  `gorm:"not null;check:chk_usage_journal_cache_read,cache_read_tokens >= 0"`
-	CacheWrite5MTokens      int64  `gorm:"column:cache_write_5m_tokens;not null;check:chk_usage_journal_cache_write_5m,cache_write_5m_tokens >= 0"`
-	CacheWrite1HTokens      int64  `gorm:"column:cache_write_1h_tokens;not null;check:chk_usage_journal_cache_write_1h,cache_write_1h_tokens >= 0"`
-	CacheWriteUnknownTokens int64  `gorm:"column:cache_write_unknown_tokens;not null;check:chk_usage_journal_cache_write_unknown,cache_write_unknown_tokens >= 0"`
-	EstimatedCostNanoUSD    int64  `gorm:"column:estimated_cost_nano_usd;not null;check:chk_usage_journal_cost_nano,estimated_cost_nano_usd >= 0"`
-	UsageMissingCount       int64  `gorm:"not null;check:chk_usage_journal_usage_missing,usage_missing_count >= 0"`
-	PartialCount            int64  `gorm:"not null;check:chk_usage_journal_partial,partial_count >= 0"`
-	UnpricedRequestCount    int64  `gorm:"not null;check:chk_usage_journal_unpriced,unpriced_request_count >= 0"`
-	PricingPartialCount     int64  `gorm:"not null;check:chk_usage_journal_pricing_partial,pricing_partial_count >= 0"`
-	AffinityPinnedCount     int64  `gorm:"not null;default:0;check:chk_usage_journal_affinity_pinned,affinity_pinned_count >= 0"`
-	AffinityHitCount        int64  `gorm:"not null;default:0;check:chk_usage_journal_affinity_hit,affinity_hit_count >= 0"`
-	Applied                 bool   `gorm:"not null;default:false;check:chk_usage_journal_applied,applied IN (TRUE, FALSE);index:idx_usage_aggregation_journal_pending_bucket,priority:1"`
+	RequestID                string `gorm:"column:request_id;type:varchar(36);primaryKey;not null"`
+	BucketStartMS            int64  `gorm:"column:bucket_start_ms;not null;check:chk_usage_journal_bucket, bucket_start_ms >= 0;index:idx_usage_aggregation_journal_pending_bucket,priority:2"`
+	AccessKeyID              uint   `gorm:"not null"`
+	GroupID                  uint   `gorm:"not null"`
+	ChannelID                string `gorm:"type:varchar(64);not null;default:''"`
+	CredentialID             uint   `gorm:"not null;default:0"`
+	Model                    string `gorm:"type:varchar(255);not null"`
+	RequestCount             int64  `gorm:"not null;check:chk_usage_journal_request_count,request_count = 1;check:chk_usage_journal_request_outcome,request_count = success_count + failure_count"`
+	SuccessCount             int64  `gorm:"not null;check:chk_usage_journal_success_count,success_count >= 0"`
+	FailureCount             int64  `gorm:"not null;check:chk_usage_journal_failure_count,failure_count >= 0"`
+	UncachedInputTokens      int64  `gorm:"column:uncached_input_tokens;not null;check:chk_usage_journal_uncached_input,uncached_input_tokens >= 0"`
+	OutputTokens             int64  `gorm:"not null;check:chk_usage_journal_output,output_tokens >= 0"`
+	CacheReadTokens          int64  `gorm:"not null;check:chk_usage_journal_cache_read,cache_read_tokens >= 0"`
+	CacheWrite5MTokens       int64  `gorm:"column:cache_write_5m_tokens;not null;check:chk_usage_journal_cache_write_5m,cache_write_5m_tokens >= 0"`
+	CacheWrite1HTokens       int64  `gorm:"column:cache_write_1h_tokens;not null;check:chk_usage_journal_cache_write_1h,cache_write_1h_tokens >= 0"`
+	CacheWriteUnknownTokens  int64  `gorm:"column:cache_write_unknown_tokens;not null;check:chk_usage_journal_cache_write_unknown,cache_write_unknown_tokens >= 0"`
+	EstimatedCostNanoUSD     int64  `gorm:"column:estimated_cost_nano_usd;not null;check:chk_usage_journal_cost_nano,estimated_cost_nano_usd >= 0"`
+	UsageMissingCount        int64  `gorm:"not null;check:chk_usage_journal_usage_missing,usage_missing_count >= 0"`
+	PartialCount             int64  `gorm:"not null;check:chk_usage_journal_partial,partial_count >= 0"`
+	UnpricedRequestCount     int64  `gorm:"not null;check:chk_usage_journal_unpriced,unpriced_request_count >= 0"`
+	PricingPartialCount      int64  `gorm:"not null;check:chk_usage_journal_pricing_partial,pricing_partial_count >= 0"`
+	AffinityPinnedCount      int64  `gorm:"not null;default:0;check:chk_usage_journal_affinity_pinned,affinity_pinned_count >= 0"`
+	AffinityHitCount         int64  `gorm:"not null;default:0;check:chk_usage_journal_affinity_hit,affinity_hit_count >= 0"`
+	AffinityOutcome          string `gorm:"type:varchar(32);not null;default:''"`
+	CacheReadSavingsNanoUSD  int64  `gorm:"column:cache_read_savings_nano_usd;not null;default:0"`
+	CacheWritePremiumNanoUSD int64  `gorm:"column:cache_write_premium_nano_usd;not null;default:0"`
+	Applied                  bool   `gorm:"not null;default:false;check:chk_usage_journal_applied,applied IN (TRUE, FALSE);index:idx_usage_aggregation_journal_pending_bucket,priority:1"`
 }
 
 func (UsageAggregationJournal) TableName() string {
@@ -178,4 +185,31 @@ type UsageStat struct {
 	// 续接已绑定会话的请求数，以及其中落在原账号的请求数（hit <= pinned 由写入方保证）。
 	AffinityPinnedCount int64 `gorm:"not null;default:0;check:chk_usage_stat_affinity_pinned,affinity_pinned_count >= 0"`
 	AffinityHitCount    int64 `gorm:"not null;default:0;check:chk_usage_stat_affinity_hit,affinity_hit_count >= 0"`
+}
+
+// CacheAffinityStat 是缓存与粘性分析的小时汇总，按访问密钥、分组、账号、上游模型与亲和结果区分。
+// 由用量汇总日志在同一事务内写入，因此与 usage_stats 同步。
+type CacheAffinityStat struct {
+	ID                       uint   `gorm:"primaryKey;autoIncrement"`
+	BucketStartMS            int64  `gorm:"column:bucket_start_ms;not null;check:chk_cache_affinity_stat_bucket,bucket_start_ms >= 0;uniqueIndex:idx_cache_affinity_stats_identity,priority:1;index:idx_cache_affinity_stats_bucket"`
+	AccessKeyID              uint   `gorm:"not null;uniqueIndex:idx_cache_affinity_stats_identity,priority:2"`
+	GroupID                  uint   `gorm:"not null;uniqueIndex:idx_cache_affinity_stats_identity,priority:3"`
+	CredentialID             uint   `gorm:"not null;default:0;uniqueIndex:idx_cache_affinity_stats_identity,priority:4"`
+	Model                    string `gorm:"type:varchar(255);not null;uniqueIndex:idx_cache_affinity_stats_identity,priority:5"`
+	AffinityOutcome          string `gorm:"type:varchar(32);not null;uniqueIndex:idx_cache_affinity_stats_identity,priority:6"`
+	RequestCount             int64  `gorm:"not null;default:0;check:chk_cache_affinity_stat_requests,request_count >= success_count"`
+	SuccessCount             int64  `gorm:"not null;default:0;check:chk_cache_affinity_stat_successes,success_count >= 0"`
+	UncachedInputTokens      int64  `gorm:"column:uncached_input_tokens;not null;default:0;check:chk_cache_affinity_stat_uncached_input,uncached_input_tokens >= 0"`
+	CacheReadTokens          int64  `gorm:"not null;default:0;check:chk_cache_affinity_stat_cache_read,cache_read_tokens >= 0"`
+	CacheWrite5MTokens       int64  `gorm:"column:cache_write_5m_tokens;not null;default:0;check:chk_cache_affinity_stat_cache_write_5m,cache_write_5m_tokens >= 0"`
+	CacheWrite1HTokens       int64  `gorm:"column:cache_write_1h_tokens;not null;default:0;check:chk_cache_affinity_stat_cache_write_1h,cache_write_1h_tokens >= 0"`
+	CacheWriteUnknownTokens  int64  `gorm:"column:cache_write_unknown_tokens;not null;default:0;check:chk_cache_affinity_stat_cache_write_unknown,cache_write_unknown_tokens >= 0"`
+	OutputTokens             int64  `gorm:"not null;default:0;check:chk_cache_affinity_stat_output,output_tokens >= 0"`
+	EstimatedCostNanoUSD     int64  `gorm:"column:estimated_cost_nano_usd;not null;default:0;check:chk_cache_affinity_stat_cost,estimated_cost_nano_usd >= 0"`
+	CacheReadSavingsNanoUSD  int64  `gorm:"column:cache_read_savings_nano_usd;not null;default:0"`
+	CacheWritePremiumNanoUSD int64  `gorm:"column:cache_write_premium_nano_usd;not null;default:0"`
+}
+
+func (CacheAffinityStat) TableName() string {
+	return "cache_affinity_stats"
 }

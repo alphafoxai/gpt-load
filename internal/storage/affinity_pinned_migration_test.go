@@ -54,7 +54,8 @@ func testAffinityPinnedMigration(t *testing.T, open func(*testing.T) *gorm.DB) {
 					t.Fatal("interruption succeeded")
 				}
 			}
-			if err := AutoMigrate(db); err != nil {
+			// 只应用到 0031 来检查它自己的契约；0033 之后 affinity_pinned 会被删除。
+			if err := applyMigrationRegistry(db, migrations[:31]); err != nil {
 				t.Fatal(err)
 			}
 			if !db.Migrator().HasColumn("request_logs", "affinity_pinned") {
@@ -83,6 +84,13 @@ func testAffinityPinnedMigration(t *testing.T, open func(*testing.T) *gorm.DB) {
 					}
 				}
 			}
+			if err := AutoMigrate(db); err != nil {
+				t.Fatal(err)
+			}
+			if db.Migrator().HasColumn("request_logs", "affinity_pinned") {
+				t.Fatal("request_logs.affinity_pinned survived 0033")
+			}
+			// 再次启动：0031 的已应用校验必须接受 0033 删掉的列，并保留计数列。
 			if err := AutoMigrate(db); err != nil {
 				t.Fatal(err)
 			}

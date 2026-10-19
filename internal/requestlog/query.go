@@ -89,6 +89,9 @@ func (service *Service) List(ctx context.Context, input ListQuery) (Page, error)
 		}
 		query = query.Where(expression)
 	}
+	if len(input.AffinityOutcomes) > 0 {
+		query = query.Where("affinity_outcome IN ?", input.AffinityOutcomes)
+	}
 	if input.RetryState == RetryStateRetried {
 		query = query.Where("attempt_count > 1")
 	} else if input.RetryState == RetryStateNotRetried {
@@ -405,6 +408,7 @@ func decodeRequestLogRows(rows []models.RequestLog) ([]Record, error) {
 			ErrorSummary:          row.ErrorSummary,
 			AffinityHit:           row.AffinityHit,
 			AffinityKind:          row.AffinityKind,
+			AffinityOutcome:       telemetry.AffinityOutcome(row.AffinityOutcome),
 			Reasoning: reasoning.Config{
 				Mode:         row.ReasoningMode,
 				Effort:       row.ReasoningEffort,

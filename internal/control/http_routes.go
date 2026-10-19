@@ -221,6 +221,7 @@ func (s *Server) HTTPModule() httproute.Module {
 			controlRoute("control.modern.groups", http.MethodGet, "/modern/groups", s.handleListModernGroups),
 			controlRoute("control.modern.access-keys", http.MethodGet, "/modern/access-keys", s.handleListModernAccessKeys),
 			controlRoute("control.modern.groups.usage", http.MethodGet, "/modern/groups/usage", s.handleModernGroupUsage),
+			controlRoute("control.modern.cache-affinity", http.MethodGet, "/modern/cache-affinity", s.handleModernCacheAffinity),
 			controlRoute("control.modern.credentials.options", http.MethodGet, "/modern/credentials/options", s.handleModernCredentialOptions),
 			controlRoute("control.modern.credentials.list", http.MethodGet, "/modern/groups/:group_id/credentials", s.handleListModernCredentials),
 			controlRoute("control.modern.credentials.get", http.MethodGet, "/modern/groups/:group_id/credentials/:credential_id", s.handleGetModernCredential),

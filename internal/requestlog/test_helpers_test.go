@@ -205,6 +205,7 @@ func aggregationRow(
 		UsageState:           string(usage.StateComplete),
 		CostState:            string(pricing.CostStatePriced),
 		PricingCompleteness:  string(pricing.CompletenessComplete),
+		AffinityOutcome:      string(telemetry.AffinityOutcomeNotApplicable),
 	}
 }
 
@@ -224,6 +225,7 @@ func testEvent(id string) telemetry.RequestEvent {
 		Status:                telemetry.RequestStatusSuccess,
 		StatusCode:            200,
 		DurationMs:            25,
+		AffinityOutcome:       telemetry.AffinityOutcomeNotApplicable,
 		Attempts: []telemetry.Attempt{{
 			Sequence:        1,
 			GroupID:         7,

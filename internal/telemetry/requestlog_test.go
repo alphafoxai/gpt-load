@@ -38,7 +38,7 @@ func TestRequestTelemetryContractUsesExactFieldAllowlist(t *testing.T) {
 			"DurationMs",
 			"AffinityHit",
 			"AffinityKind",
-			"AffinityPinned",
+			"AffinityOutcome",
 			"Reasoning",
 			"Attempts",
 			"Usage",
@@ -79,6 +79,8 @@ func TestRequestTelemetryContractUsesExactFieldAllowlist(t *testing.T) {
 			"CostState",
 			"PricingCompleteness",
 			"EstimatedCostNanoUSD",
+			"CacheReadSavingsNanoUSD",
+			"CacheWritePremiumNanoUSD",
 			"ReceiptJSON",
 		},
 		reflect.TypeOf(UsageObservation{}): {

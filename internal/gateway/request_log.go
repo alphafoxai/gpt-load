@@ -78,7 +78,7 @@ type requestRecorder struct {
 	usageDiagnostics     usage.Diagnostics
 	affinityHit          bool
 	affinityKind         string
-	affinityPinned       bool
+	affinityOutcome      telemetry.AffinityOutcome
 	attempts             []telemetry.Attempt
 	attemptPricing       []frozenAttemptPricing
 	pendingPricing       frozenAttemptPricing
@@ -117,6 +117,8 @@ func newRequestRecorder(
 		redactor:            redact.New(),
 		usageApplicable:     true,
 		usage:               notApplicableUsageObservation(),
+		// 解析亲和之前就结束的请求（鉴权、限流、参数错误）记为不适用。
+		affinityOutcome: telemetry.AffinityOutcomeNotApplicable,
 	}
 }
 
@@ -168,7 +170,7 @@ func (recorder *requestRecorder) emit() {
 		DurationMs:            duration.Milliseconds(),
 		AffinityHit:           recorder.affinityHit,
 		AffinityKind:          recorder.affinityKind,
-		AffinityPinned:        recorder.affinityPinned,
+		AffinityOutcome:       recorder.affinityOutcome,
 		Reasoning:             recorder.reasoning,
 		Operation:             recorder.operation,
 		Attempts:              append([]telemetry.Attempt(nil), recorder.attempts...),
@@ -214,19 +216,23 @@ func (recorder *requestRecorder) estimatedCostNanoUSD() int64 {
 	return telemetry.TotalPricing(recorder.usage.Pricing, recorder.autoDecision, recorder.audit).EstimatedCostNanoUSD
 }
 
-// setAffinityPinned 记录请求续接了一个已绑定账号的会话。
-func (recorder *requestRecorder) setAffinityPinned() {
+// setAffinityOutcome 记录解析阶段的判定；首次尝试前请求就被拒绝时，日志保留这个值。
+func (recorder *requestRecorder) setAffinityOutcome(outcome telemetry.AffinityOutcome) {
 	if recorder != nil {
-		recorder.affinityPinned = true
+		recorder.affinityOutcome = outcome
 	}
 }
 
-// setAffinityHit 只记录命中；命中必然发生在已绑定的会话上，所以同时标记 pinned。
-func (recorder *requestRecorder) setAffinityHit(hit bool, kind string) {
-	if recorder != nil && hit {
-		recorder.affinityHit = true
+// settleAffinity 在首次尝试时写入最终结果；命中时同时记录命中来源。
+func (recorder *requestRecorder) settleAffinity(outcome telemetry.AffinityOutcome, kind string) {
+	if recorder == nil {
+		return
+	}
+	recorder.affinityOutcome = outcome
+	recorder.affinityHit = outcome.Hit()
+	recorder.affinityKind = ""
+	if recorder.affinityHit {
 		recorder.affinityKind = kind
-		recorder.affinityPinned = true
 	}
 }
 
@@ -672,6 +678,10 @@ func quoteFrozenAttempt(
 	observation.CostState = string(quote.State)
 	observation.PricingCompleteness = string(quote.Completeness)
 	observation.EstimatedCostNanoUSD = int64(quote.EstimatedCostNanoUSD)
+	if quote.State == pricing.CostStatePriced {
+		observation.CacheReadSavingsNanoUSD = quote.CacheValue.ReadSavingsNanoUSD
+		observation.CacheWritePremiumNanoUSD = quote.CacheValue.WritePremiumNanoUSD
+	}
 	if receipt != nil {
 		if encoded, err := json.Marshal(receipt); err == nil {
 			observation.ReceiptJSON = string(encoded)

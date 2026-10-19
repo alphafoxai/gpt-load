@@ -205,7 +205,7 @@ func mapEvent(
 		ErrorSummary:                sanitizeSummary(redactor, event.ErrorSummary),
 		AffinityHit:                 event.AffinityHit,
 		AffinityKind:                event.AffinityKind,
-		AffinityPinned:              event.AffinityPinned,
+		AffinityOutcome:             string(event.AffinityOutcome),
 		ReasoningMode:               event.Reasoning.Mode,
 		ReasoningEffort:             event.Reasoning.Effort,
 		ReasoningBudgetTokens:       event.Reasoning.BudgetTokens,
@@ -216,6 +216,8 @@ func mapEvent(
 		CacheWrite1HTokens:          result.Tokens.CacheWrite1H,
 		CacheWriteUnknownTokens:     result.Tokens.CacheWriteUnknown,
 		EstimatedCostNanoUSD:        pricingObservation.EstimatedCostNanoUSD,
+		CacheReadSavingsNanoUSD:     pricingObservation.CacheReadSavingsNanoUSD,
+		CacheWritePremiumNanoUSD:    pricingObservation.CacheWritePremiumNanoUSD,
 		UsageState:                  string(result.State),
 		CostState:                   pricingObservation.CostState,
 		PricingCompleteness:         pricingObservation.PricingCompleteness,
@@ -337,6 +339,16 @@ func validateFrozenObservation(event telemetry.RequestEvent) error {
 	if costState == pricing.CostStatePriced &&
 		pricingObservation.UpstreamModel == "" {
 		return fmt.Errorf("priced observation requires exact identity")
+	}
+	if costState != pricing.CostStatePriced &&
+		(pricingObservation.CacheReadSavingsNanoUSD != 0 || pricingObservation.CacheWritePremiumNanoUSD != 0) {
+		return fmt.Errorf("cache value requires a priced observation")
+	}
+	if !event.AffinityOutcome.Valid() {
+		return fmt.Errorf("invalid affinity outcome")
+	}
+	if event.AffinityHit != event.AffinityOutcome.Hit() {
+		return fmt.Errorf("affinity hit disagrees with affinity outcome")
 	}
 	for _, attempt := range event.Attempts {
 		if _, err := validatedAttemptObservation(attempt); err != nil {

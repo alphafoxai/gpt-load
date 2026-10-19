@@ -162,6 +162,7 @@ type requestLogItemResponse struct {
 	ErrorSummary              string                       `json:"error_summary"`
 	AffinityHit               bool                         `json:"affinity_hit"`
 	AffinityKind              string                       `json:"affinity_kind"`
+	AffinityOutcome           string                       `json:"affinity_outcome"`
 	GroupID                   *uint                        `json:"group_id"`
 	ChannelID                 *channel.ID                  `json:"channel_id"`
 	CredentialID              *uint                        `json:"credential_id"`
@@ -495,6 +496,7 @@ func requestLogQueryUsesInternalFields(rawQuery string) bool {
 		"retry_state",
 		"retry_count_min",
 		"retry_count_max",
+		"affinity_outcome",
 	} {
 		if _, exists := values[key]; exists {
 			return true
@@ -510,6 +512,7 @@ func sanitizeAccessKeyRequestLog(record requestlog.Record) requestlog.Record {
 	record.AttemptCount = 0
 	record.AffinityHit = false
 	record.AffinityKind = ""
+	record.AffinityOutcome = ""
 	record.GroupID = 0
 	record.ChannelID = ""
 	record.CredentialID = 0
@@ -563,7 +566,7 @@ func parseRequestLogQuery(rawQuery string) (requestlog.ListQuery, *app_errors.AP
 		"client_ip": {}, "client_model": {}, "upstream_model": {}, "model_consistency": {}, "access_key_id": {},
 		"status": {}, "request_id": {}, "protocol": {}, "operation": {}, "stream": {}, "final_status_code": {},
 		"audit_status": {}, "audit_rule": {},
-		"usage_state": {}, "cost_state": {}, "pricing_completeness": {}, "cache_present": {},
+		"usage_state": {}, "cost_state": {}, "pricing_completeness": {}, "cache_present": {}, "affinity_outcome": {},
 		"attempt_status_code": {}, "failure_category": {}, "error_code": {},
 		"retry_state": {}, "retry_count_min": {}, "retry_count_max": {},
 		"first_response_min_ms": {}, "first_response_max_ms": {},
@@ -746,6 +749,13 @@ func parseRequestLogQuery(rawQuery string) (requestlog.ListQuery, *app_errors.AP
 			return requestlog.ListQuery{}, app_errors.ErrValidation
 		}
 		query.CachePresent = &parsed
+	}
+	if value, ok := singleQueryValue(values, "affinity_outcome"); ok {
+		outcomes, valid := parseRequestLogAffinityOutcomes(value)
+		if !valid {
+			return requestlog.ListQuery{}, app_errors.ErrValidation
+		}
+		query.AffinityOutcomes = outcomes
 	}
 	if value, ok := singleQueryValue(values, "attempt_status_code"); ok {
 		parsed, apiErr := parseRequestLogStatusCode(value)
@@ -1289,6 +1299,7 @@ func mapRequestLogItemResponse(
 		ErrorSummary:            record.ErrorSummary,
 		AffinityHit:             record.AffinityHit,
 		AffinityKind:            record.AffinityKind,
+		AffinityOutcome:         string(record.AffinityOutcome),
 		GroupID:                 usageCost.groupID,
 		ChannelID:               usageCost.channelID,
 		CredentialID:            usageCost.credentialID,
@@ -1806,4 +1817,23 @@ func (s *Service) credentialLabel(
 		return "", err
 	}
 	return maskCanonicalCredential(validated.CanonicalJSON())
+}
+
+// parseRequestLogAffinityOutcomes 接受单个亲和结果，或 miss（全部未命中）、pinned（全部已绑定）。
+func parseRequestLogAffinityOutcomes(value string) ([]telemetry.AffinityOutcome, bool) {
+	switch value {
+	case "miss", "pinned":
+		outcomes := make([]telemetry.AffinityOutcome, 0, len(telemetry.AffinityOutcomes))
+		for _, outcome := range telemetry.AffinityOutcomes {
+			if (value == "miss" && outcome.Miss()) || (value == "pinned" && outcome.Pinned()) {
+				outcomes = append(outcomes, outcome)
+			}
+		}
+		return outcomes, true
+	}
+	outcome := telemetry.AffinityOutcome(value)
+	if !outcome.Valid() {
+		return nil, false
+	}
+	return []telemetry.AffinityOutcome{outcome}, true
 }

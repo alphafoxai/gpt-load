@@ -121,7 +121,10 @@ type PricingObservation struct {
 	CostState            string
 	PricingCompleteness  string
 	EstimatedCostNanoUSD int64
-	ReceiptJSON          string
+	// 缓存读取节省与写入溢价，见 pricing.CacheValue；只在已计价时有值。
+	CacheReadSavingsNanoUSD  int64
+	CacheWritePremiumNanoUSD int64
+	ReceiptJSON              string
 }
 
 type UsageObservation struct {
@@ -155,12 +158,11 @@ type RequestEvent struct {
 	DurationMs            int64
 	AffinityHit           bool
 	AffinityKind          string
-	// AffinityPinned 表示请求到达时会话已有绑定（未过期的亲和记录或 previous_response_id 续接）；
-	// AffinityHit 只可能出现在 AffinityPinned 的请求上。
-	AffinityPinned bool
-	Reasoning      reasoning.Config
-	Attempts       []Attempt
-	Usage          UsageObservation
+	// AffinityOutcome 是路由时（首次尝试）对会话绑定的判定；AffinityHit 恰好在结果为命中时为 true。
+	AffinityOutcome AffinityOutcome
+	Reasoning       reasoning.Config
+	Attempts        []Attempt
+	Usage           UsageObservation
 	// RequestBody 只在访问密钥开启请求内容记录时携带，是网关收到并解码后的客户端原始请求体。
 	RequestBody []byte
 }
@@ -179,3 +181,69 @@ const (
 	AffinityPromptCacheKey     = "prompt_cache_key"
 	AffinityResponseContinuity = "response_continuity"
 )
+
+// AffinityOutcome 描述请求到达时会话绑定的状态，以及首次尝试是否落在绑定的账号上。
+type AffinityOutcome string
+
+const (
+	// AffinityOutcomeUnrecorded 只出现在记录该字段之前的日志里。
+	AffinityOutcomeUnrecorded AffinityOutcome = ""
+	// AffinityOutcomeNotApplicable：选中分组未开启亲和，或请求没有可用的亲和键。
+	AffinityOutcomeNotApplicable AffinityOutcome = "not_applicable"
+	// AffinityOutcomeNew：没有存活的绑定（新会话，或绑定已被淘汰）。
+	AffinityOutcomeNew AffinityOutcome = "new"
+	// AffinityOutcomeExpired：曾有绑定，但会话空闲超过亲和有效期。
+	AffinityOutcomeExpired AffinityOutcome = "expired"
+	// AffinityOutcomeHit：首次尝试落在绑定的账号上（提示前缀或 prompt_cache_key）。
+	AffinityOutcomeHit AffinityOutcome = "hit"
+	// AffinityOutcomeContinuation：previous_response_id 续接，账号由响应绑定决定。
+	AffinityOutcomeContinuation AffinityOutcome = "continuation"
+	// AffinityOutcomeMissUnavailable：绑定账号在候选中，但首次尝试时不可用（冷却、限流、并发、额度）。
+	AffinityOutcomeMissUnavailable AffinityOutcome = "miss_unavailable"
+	// AffinityOutcomeMissExcluded：绑定账号不在本次请求的候选里（分组被删除或关闭亲和，或不在访问密钥/模型的候选范围）。
+	AffinityOutcomeMissExcluded AffinityOutcome = "miss_excluded"
+	// AffinityOutcomeMissReauthorized：绑定账号已重新授权为另一个身份。
+	AffinityOutcomeMissReauthorized AffinityOutcome = "miss_reauthorized"
+)
+
+// AffinityOutcomes 按展示顺序列出所有已记录的结果。
+var AffinityOutcomes = []AffinityOutcome{
+	AffinityOutcomeHit,
+	AffinityOutcomeContinuation,
+	AffinityOutcomeMissUnavailable,
+	AffinityOutcomeMissExcluded,
+	AffinityOutcomeMissReauthorized,
+	AffinityOutcomeExpired,
+	AffinityOutcomeNew,
+	AffinityOutcomeNotApplicable,
+}
+
+// Valid 接受已记录的结果；空值（未记录）只用于历史数据，不是有效的新结果。
+func (outcome AffinityOutcome) Valid() bool {
+	for _, candidate := range AffinityOutcomes {
+		if outcome == candidate {
+			return true
+		}
+	}
+	return false
+}
+
+// Pinned 表示请求到达时会话已绑定账号。
+func (outcome AffinityOutcome) Pinned() bool {
+	return outcome.Hit() || outcome.Miss()
+}
+
+// Hit 表示首次尝试落在绑定的账号上。
+func (outcome AffinityOutcome) Hit() bool {
+	return outcome == AffinityOutcomeHit || outcome == AffinityOutcomeContinuation
+}
+
+// Miss 表示会话已绑定，但首次尝试没有落在绑定的账号上。
+func (outcome AffinityOutcome) Miss() bool {
+	switch outcome {
+	case AffinityOutcomeMissUnavailable, AffinityOutcomeMissExcluded, AffinityOutcomeMissReauthorized:
+		return true
+	default:
+		return false
+	}
+}

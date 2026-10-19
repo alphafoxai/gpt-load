@@ -17,6 +17,7 @@ func TestMapEventV3PersistsMillisecondLedgerAndQuotesUpstreamModel(t *testing.T)
 		RequestID:             "00000000-0000-4000-8000-000000004001",
 		CompletedAt:           time.Date(2026, time.July, 24, 12, 34, 56, 789_000_000, time.UTC),
 		AccessKeyID:           41,
+		AffinityOutcome:       telemetry.AffinityOutcomeHit,
 		ClientModel:           "client-alias",
 		UpstreamModel:         "provider-model",
 		UpstreamReportedModel: "provider-model",

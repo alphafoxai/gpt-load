@@ -19,7 +19,7 @@ func TestMapEventClientIP(t *testing.T) {
 	} {
 		event := telemetry.RequestEvent{
 			RequestID: "resource", CompletedAt: time.Now(), ClientIP: test.input,
-			Status: telemetry.RequestStatusSuccess,
+			Status: telemetry.RequestStatusSuccess, AffinityOutcome: telemetry.AffinityOutcomeNotApplicable,
 			Usage: telemetry.UsageObservation{
 				Result:  usage.Result{State: usage.StateNotApplicable},
 				Pricing: telemetry.PricingObservation{CostState: string(pricing.CostStateNotApplicable), PricingCompleteness: string(pricing.CompletenessNotApplicable)},

@@ -725,16 +725,15 @@ func (handler *Handler) Handle(ginContext *gin.Context) {
 				IdentityGeneration: binding.IdentityGeneration,
 			},
 		}
-		recorder.setAffinityPinned()
+		requestAffinity.outcome = telemetry.AffinityOutcomeContinuation
+		requestAffinity.kind = telemetry.AffinityResponseContinuity
 	} else {
 		requestAffinity = handler.resolveRequestAffinity(
-			snapshot, accessKey.ID, selectedRoute.Protocol, metadata.AffinityPrefix, allowedCredentialRefs, metadata.PromptCacheKey,
+			snapshot, accessKey.ID, selectedRoute.Protocol, metadata.AffinityPrefix, allowedCredentialRefs, candidateGroupIDs, metadata.PromptCacheKey,
 		)
 		query.PreferredCredentialID = requestAffinity.preferredCredentialID
-		if requestAffinity.observation.Found() {
-			recorder.setAffinityPinned()
-		}
 	}
+	recorder.setAffinityOutcome(requestAffinity.outcome)
 	iterator := scheduler.New(snapshot, handler.registry, query)
 	handler.executeAttempts(
 		ginContext,
@@ -1067,13 +1066,8 @@ func (handler *Handler) executeAttempts(
 		scope execution.ErrorScope,
 	) bool {
 		attemptSequence++
-		if attemptSequence == 1 && (originalMetadata.PreviousResponseID != "" ||
-			(requestAffinity.preferredCredentialID != 0 && selection.CredentialID == requestAffinity.preferredCredentialID)) {
-			kind := requestAffinity.kind
-			if originalMetadata.PreviousResponseID != "" {
-				kind = telemetry.AffinityResponseContinuity
-			}
-			recorder.setAffinityHit(true, kind)
+		if attemptSequence == 1 {
+			recorder.settleAffinity(requestAffinity.settle(selection.CredentialID, selection.Group.AffinityEnabled))
 		}
 		updateDebugHeaders(ginContext.Writer.Header(), selection.Group.Name, attemptSequence)
 		if recorder != nil {
@@ -1309,13 +1303,8 @@ func (handler *Handler) executeAttempts(
 		defer releaseGroup()
 		attemptSequence++
 		forwardAttempts++
-		if attemptSequence == 1 && (originalMetadata.PreviousResponseID != "" ||
-			(requestAffinity.preferredCredentialID != 0 && selection.CredentialID == requestAffinity.preferredCredentialID)) {
-			kind := requestAffinity.kind
-			if originalMetadata.PreviousResponseID != "" {
-				kind = telemetry.AffinityResponseContinuity
-			}
-			recorder.setAffinityHit(true, kind)
+		if attemptSequence == 1 {
+			recorder.settleAffinity(requestAffinity.settle(selection.CredentialID, selection.Group.AffinityEnabled))
 		}
 		updateDebugHeaders(ginContext.Writer.Header(), selection.Group.Name, attemptSequence)
 		executionRequestID := "untracked"

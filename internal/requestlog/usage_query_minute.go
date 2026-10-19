@@ -55,7 +55,7 @@ const usageRequestLogProjection = `
 	CASE WHEN usage_state = 'partial' THEN 1 ELSE 0 END AS partial_count,
 	CASE WHEN usage_state IN ('complete', 'partial') AND cost_state = 'unpriced' THEN 1 ELSE 0 END AS unpriced_request_count,
 	CASE WHEN cost_state = 'priced' AND pricing_completeness = 'partial' THEN 1 ELSE 0 END AS pricing_partial_count,
-	CASE WHEN affinity_pinned THEN 1 ELSE 0 END AS affinity_pinned_count,
-	CASE WHEN affinity_pinned AND affinity_hit THEN 1 ELSE 0 END AS affinity_hit_count,
+	CASE WHEN affinity_outcome IN ('hit', 'continuation', 'miss_unavailable', 'miss_excluded', 'miss_reauthorized') THEN 1 ELSE 0 END AS affinity_pinned_count,
+	CASE WHEN affinity_outcome IN ('hit', 'continuation') THEN 1 ELSE 0 END AS affinity_hit_count,
 	? + 0 AS bucket_alignment_ms
 `

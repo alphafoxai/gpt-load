@@ -137,7 +137,8 @@ func TestProjectProcessLogPreservesNoCandidateDiagnostics(t *testing.T) {
 	event := telemetry.RequestEvent{
 		RequestID: "no-candidate", CompletedAt: testEvent("x").CompletedAt,
 		Protocol: protocol.OpenAICompletions, AccessKeyID: 42, ClientModel: "client-model",
-		Status: telemetry.RequestStatusError, StatusCode: http.StatusServiceUnavailable,
+		AffinityOutcome: telemetry.AffinityOutcomeNotApplicable,
+		Status:          telemetry.RequestStatusError, StatusCode: http.StatusServiceUnavailable,
 		ErrorCode: "no_available_candidate", ErrorSummary: "No available upstream candidate.", DurationMs: 25,
 		Usage: telemetry.UsageObservation{
 			Result:  usage.Result{State: usage.StateNotApplicable},
@@ -166,7 +167,7 @@ func TestProjectProcessLogSkipsInvalidProjection(t *testing.T) {
 func TestProjectProcessLogOmitsMissingAttribution(t *testing.T) {
 	event := telemetry.RequestEvent{
 		RequestID: "resource", CompletedAt: testEvent("x").CompletedAt,
-		Status: telemetry.RequestStatusSuccess,
+		Status: telemetry.RequestStatusSuccess, AffinityOutcome: telemetry.AffinityOutcomeNotApplicable,
 		Usage: telemetry.UsageObservation{
 			Result:  usage.Result{State: usage.StateNotApplicable},
 			Pricing: telemetry.PricingObservation{CostState: string(pricing.CostStateNotApplicable), PricingCompleteness: string(pricing.CompletenessNotApplicable)},

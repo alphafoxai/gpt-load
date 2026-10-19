@@ -311,9 +311,11 @@ func TestQuoteWithReceiptFreezesExactTieredCalculation(t *testing.T) {
 		},
 		State: usage.StateComplete,
 	})
+	// 选中的是上下文分档价（输入 3、读取 1、写入 5）：读取省 2M×(3−1)，写入溢价 1M×(5−3) + 1M×(5×1.6−3)。
 	if quote != (Quote{
 		State: CostStatePriced, Completeness: CompletenessComplete,
 		EstimatedCostNanoUSD: 27,
+		CacheValue:           CacheValue{ReadSavingsNanoUSD: 4, WritePremiumNanoUSD: 7},
 	}) {
 		t.Fatalf("QuoteWithReceipt() quote = %#v", quote)
 	}

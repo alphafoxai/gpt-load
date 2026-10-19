@@ -55,9 +55,11 @@ func verifyMigrationValidationQueryLimits(t *testing.T, db *gorm.DB) {
 		t.Fatalf("initialize schema: %v", err)
 	}
 	t.Logf("driver=%s phase=initialize total=%d current_database=%d information_schema=%d", db.Dialector.Name(), initialize.total, initialize.currentDatabase, initialize.informationSchema)
-	// 0032 adds a table with one index and three check constraints: it costs about
-	// 20 initialization statements (983 before it) and 6 per restart.
-	initialLimit := 1050
+	// 0032 adds a table with one index and three check constraints (about 20
+	// initialization statements); 0033 adds six columns, a table with two
+	// indexes and eleven checks, and drops one column (about 30 more). With
+	// both, SQLite measured 1054 and Postgres 1104.
+	initialLimit := 1150
 	if db.Dialector.Name() == "mysql" {
 		initialLimit = 1800
 	}

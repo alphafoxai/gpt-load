@@ -86,6 +86,8 @@ type Quote struct {
 	State                CostState
 	Completeness         Completeness
 	EstimatedCostNanoUSD NanoUSD
+	// CacheValue 只在 State 为 priced 时有值，与 EstimatedCostNanoUSD 使用同一档价格和倍率。
+	CacheValue CacheValue
 }
 
 // ReceiptMethodUnitRateSum identifies the stable line-item calculation used by

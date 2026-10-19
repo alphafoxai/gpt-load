@@ -196,6 +196,8 @@ func TestMapEventAllowsUnboundNoModelResourceOnlyAsNotApplicable(t *testing.T) {
 		RequestID:   "resource",
 		CompletedAt: time.Now(),
 		Status:      telemetry.RequestStatusSuccess,
+		// 解析亲和之前结束的请求由记录器默认记为不适用。
+		AffinityOutcome: telemetry.AffinityOutcomeNotApplicable,
 		Usage: telemetry.UsageObservation{
 			Result: usage.Result{State: usage.StateNotApplicable},
 			Pricing: telemetry.PricingObservation{

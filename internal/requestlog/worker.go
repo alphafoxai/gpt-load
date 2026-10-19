@@ -367,6 +367,9 @@ func applyUsageJournalBatch(
 			return fmt.Errorf("upsert usage stat: %w", err)
 		}
 	}
+	if err := applyCacheAffinityJournals(tx, journals); err != nil {
+		return err
+	}
 	ids := make([]string, 0, len(journals))
 	for _, journal := range journals {
 		ids = append(ids, journal.RequestID)
@@ -434,35 +437,48 @@ func buildUsageAggregationJournals(
 		if len(deltas) != 1 {
 			return nil, fmt.Errorf("build usage journal %q: unexpected delta count", row.ID)
 		}
+		readSavings, writePremium := journalCacheValue(row)
 		for key, delta := range deltas {
 			journals = append(journals, models.UsageAggregationJournal{
-				RequestID:               row.ID,
-				BucketStartMS:           key.BucketStartMS,
-				AccessKeyID:             key.AccessKeyID,
-				ChannelID:               key.ChannelID,
-				GroupID:                 key.GroupID,
-				CredentialID:            key.CredentialID,
-				Model:                   key.Model,
-				RequestCount:            delta.RequestCount,
-				SuccessCount:            delta.SuccessCount,
-				FailureCount:            delta.FailureCount,
-				UncachedInputTokens:     delta.UncachedInputTokens,
-				OutputTokens:            delta.OutputTokens,
-				CacheReadTokens:         delta.CacheReadTokens,
-				CacheWrite5MTokens:      delta.CacheWrite5MTokens,
-				CacheWrite1HTokens:      delta.CacheWrite1HTokens,
-				CacheWriteUnknownTokens: delta.CacheWriteUnknownTokens,
-				EstimatedCostNanoUSD:    delta.EstimatedCostNanoUSD,
-				UsageMissingCount:       delta.UsageMissingCount,
-				PartialCount:            delta.PartialCount,
-				UnpricedRequestCount:    delta.UnpricedRequestCount,
-				PricingPartialCount:     delta.PricingPartialCount,
-				AffinityPinnedCount:     delta.AffinityPinnedCount,
-				AffinityHitCount:        delta.AffinityHitCount,
+				RequestID:                row.ID,
+				BucketStartMS:            key.BucketStartMS,
+				AccessKeyID:              key.AccessKeyID,
+				ChannelID:                key.ChannelID,
+				GroupID:                  key.GroupID,
+				CredentialID:             key.CredentialID,
+				Model:                    key.Model,
+				RequestCount:             delta.RequestCount,
+				SuccessCount:             delta.SuccessCount,
+				FailureCount:             delta.FailureCount,
+				UncachedInputTokens:      delta.UncachedInputTokens,
+				OutputTokens:             delta.OutputTokens,
+				CacheReadTokens:          delta.CacheReadTokens,
+				CacheWrite5MTokens:       delta.CacheWrite5MTokens,
+				CacheWrite1HTokens:       delta.CacheWrite1HTokens,
+				CacheWriteUnknownTokens:  delta.CacheWriteUnknownTokens,
+				EstimatedCostNanoUSD:     delta.EstimatedCostNanoUSD,
+				UsageMissingCount:        delta.UsageMissingCount,
+				PartialCount:             delta.PartialCount,
+				UnpricedRequestCount:     delta.UnpricedRequestCount,
+				PricingPartialCount:      delta.PricingPartialCount,
+				AffinityPinnedCount:      delta.AffinityPinnedCount,
+				AffinityHitCount:         delta.AffinityHitCount,
+				AffinityOutcome:          row.AffinityOutcome,
+				CacheReadSavingsNanoUSD:  readSavings,
+				CacheWritePremiumNanoUSD: writePremium,
 			})
 		}
 	}
 	return journals, nil
+}
+
+// journalCacheValue 与 addRow 统计费用的条件一致：只有计入用量且已计价的请求带缓存节省与写入溢价。
+func journalCacheValue(row models.RequestLog) (int64, int64) {
+	if (row.UsageState != string(usage.StateComplete) && row.UsageState != string(usage.StatePartial)) ||
+		row.CostState != string(pricing.CostStatePriced) {
+		return 0, 0
+	}
+	return row.CacheReadSavingsNanoUSD, row.CacheWritePremiumNanoUSD
 }
 
 func buildUsageJournalDeltas(
@@ -591,18 +607,26 @@ func (delta *usageStatDelta) addRow(row models.RequestLog) error {
 			return err
 		}
 	}
-	if row.AffinityHit && !row.AffinityPinned {
-		return fmt.Errorf("aggregate request log %q: affinity hit without a pinned conversation", row.ID)
+	outcome := telemetry.AffinityOutcome(row.AffinityOutcome)
+	if !outcome.Valid() {
+		return fmt.Errorf("aggregate request log %q: invalid affinity outcome %q", row.ID, row.AffinityOutcome)
 	}
-	if row.AffinityPinned {
+	if row.AffinityHit != outcome.Hit() {
+		return fmt.Errorf("aggregate request log %q: affinity hit disagrees with outcome %q", row.ID, row.AffinityOutcome)
+	}
+	if outcome.Pinned() {
 		if err := checkedInt64Add(&delta.AffinityPinnedCount, 1, "affinity_pinned_count"); err != nil {
 			return err
 		}
 	}
-	if row.AffinityHit {
+	if outcome.Hit() {
 		if err := checkedInt64Add(&delta.AffinityHitCount, 1, "affinity_hit_count"); err != nil {
 			return err
 		}
+	}
+	if row.CostState != string(pricing.CostStatePriced) &&
+		(row.CacheReadSavingsNanoUSD != 0 || row.CacheWritePremiumNanoUSD != 0) {
+		return fmt.Errorf("aggregate request log %q: cache value without a priced cost", row.ID)
 	}
 	if err := validatePersistedPricingState(row); err != nil {
 		return fmt.Errorf("aggregate request log %q: %w", row.ID, err)

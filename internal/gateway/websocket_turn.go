@@ -317,13 +317,16 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 		reject(value)
 		return
 	}
-	affinity := h.resolveRequestAffinity(snapshot, key.ID, protocol.OpenAIResponses, original.metadata.AffinityPrefix, query.AllowedCredentialRefs, original.metadata.PromptCacheKey)
+	affinity := h.resolveRequestAffinity(snapshot, key.ID, protocol.OpenAIResponses, original.metadata.AffinityPrefix, query.AllowedCredentialRefs, groups, original.metadata.PromptCacheKey)
 	if requiredRef == nil {
 		query.PreferredCredentialID = affinity.preferredCredentialID
+	} else {
+		// 续接只允许响应绑定的账号；粘性结果按续接记录，不看提示前缀的绑定。
+		affinity.preferredCredentialID = 0
+		affinity.outcome = telemetry.AffinityOutcomeContinuation
+		affinity.kind = telemetry.AffinityResponseContinuity
 	}
-	if requiredRef != nil || affinity.observation.Found() {
-		recorder.setAffinityPinned()
-	}
+	recorder.setAffinityOutcome(affinity.outcome)
 	iterator := scheduler.New(snapshot, h.registry, query)
 	redactionCipher, err := h.encryption.NewRedactionCipher(key.ID)
 	if err != nil {
@@ -537,11 +540,7 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 		recorder.setUsageDiagnostics(effective.metadata.UsageDiagnostics)
 		recorder.freezeNextAttemptPricing(h.freezeAttemptPricing(selection, effective.metadata, true, key.PriceMultiplier))
 		if sequence == 1 {
-			kind := affinity.kind
-			if requiredRef != nil {
-				kind = telemetry.AffinityResponseContinuity
-			}
-			recorder.setAffinityHit(requiredRef != nil || selection.CredentialID == affinity.preferredCredentialID, kind)
+			recorder.settleAffinity(affinity.settle(selection.CredentialID, selection.Group.AffinityEnabled))
 		}
 		releaseGroup, failure := h.acquireGroupConcurrency(selection.GroupID)
 		if failure != nil {

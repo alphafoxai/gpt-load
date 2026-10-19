@@ -93,6 +93,28 @@ func Validate0031(db *gorm.DB) error {
 	return nil
 }
 
+// ValidateCurrent0031 仅凭已登记的 0033 接受 affinity_pinned 已删除；用量计数列仍按原样校验。
+func ValidateCurrent0031(db *gorm.DB) error {
+	var ids []string
+	if err := db.Table("schema_migrations").Where("id IN ?", []string{ID0033, ID0033 + "#building"}).Pluck("id", &ids).Error; err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if id == ID0033 || (id == ID0033+"#building" && db.Dialector.Name() == "mysql") {
+			if err := ValidateRecoverable0031(db); err != nil {
+				return err
+			}
+			for _, counter := range affinityCounters0031 {
+				if err := validateCounter0031(db, counter); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}
+	return Validate0031(db)
+}
+
 func validatePinnedColumn0031(db *gorm.DB) error {
 	columns, err := db.Migrator().ColumnTypes(&requestLog0031{})
 	if err != nil {

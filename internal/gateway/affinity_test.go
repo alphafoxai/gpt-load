@@ -45,6 +45,27 @@ func TestHandlerLearnsAndReusesAutomaticSoftAffinity(t *testing.T) {
 
 	assertAffinityAttemptKeys(t, forwarder.inputs, []string{"sk-one", "sk-one"})
 	assertAffinityHits(t, sink.snapshot(), []bool{false, true})
+	assertAffinityOutcomes(t, sink.snapshot(), telemetry.AffinityOutcomeNew, telemetry.AffinityOutcomeHit)
+}
+
+// An idle conversation past the affinity TTL is reported as expired, not as a
+// new conversation, so operators can tell idle drop-off from new traffic.
+func TestHandlerReportsAffinityExpiredAfterTTL(t *testing.T) {
+	forwarder := &scriptedForwarder{results: successfulAffinityResults(3)}
+	handler, manager, _ := newHandlerForTest(t, forwarder, "sk-one", "sk-two")
+	manager.Current().Settings.AffinityTTL = 30 * time.Millisecond
+	sink := &recordingRequestLogSink{}
+	handler.requestLogSink = sink
+	engine := newAffinityTestEngine(t, handler)
+	body := `{"model":"gpt-4o","messages":[{"role":"user","content":"idle conversation"}]}`
+
+	serveAffinityRequest(t, engine, body)
+	time.Sleep(60 * time.Millisecond)
+	serveAffinityRequest(t, engine, body)
+	serveAffinityRequest(t, engine, body)
+
+	assertAffinityOutcomes(t, sink.snapshot(),
+		telemetry.AffinityOutcomeNew, telemetry.AffinityOutcomeExpired, telemetry.AffinityOutcomeHit)
 }
 
 // Every control-plane write republishes the snapshot. Creating an access key for
@@ -72,6 +93,7 @@ func TestHandlerKeepsSoftAffinityAcrossUnrelatedConfigPublish(t *testing.T) {
 
 	assertAffinityAttemptKeys(t, forwarder.inputs, []string{"sk-one", "sk-one"})
 	assertAffinityHits(t, sink.snapshot(), []bool{false, true})
+	assertAffinityOutcomes(t, sink.snapshot(), telemetry.AffinityOutcomeNew, telemetry.AffinityOutcomeHit)
 }
 
 func TestHandlerReusesSoftAffinityAcrossModelsWithSameCandidateRange(t *testing.T) {
@@ -106,8 +128,10 @@ func TestHandlerRelearnsSoftAffinityWhenModelCandidateRangeChanges(t *testing.T)
 
 	assertAffinityAttemptKeys(t, forwarder.inputs, []string{"sk-one", "sk-two", "sk-two", "sk-one"})
 	assertAffinityHits(t, sink.snapshot(), []bool{false, false, true, false})
-	// 第 2、4 个请求找到了绑定，但绑定的账号不在新模型的候选里：算续接，未命中。
-	assertAffinityPinned(t, sink.snapshot(), []bool{false, true, true, true})
+	// 第 2、4 个请求找到了绑定，但绑定账号所在分组不服务新模型：未命中，账号不在候选。
+	assertAffinityOutcomes(t, sink.snapshot(),
+		telemetry.AffinityOutcomeNew, telemetry.AffinityOutcomeMissExcluded,
+		telemetry.AffinityOutcomeHit, telemetry.AffinityOutcomeMissExcluded)
 	assertAffinityUpstreamModels(t, forwarder.inputs, []string{"gpt-4o", "gpt-4o-mini", "gpt-4o-mini", "gpt-4o"})
 }
 
@@ -129,7 +153,7 @@ func TestHandlerDoesNotLearnAffinityForNonParticipatingGroup(t *testing.T) {
 
 	assertAffinityAttemptKeys(t, forwarder.inputs, []string{"sk-one", "sk-two"})
 	assertAffinityHits(t, sink.snapshot(), []bool{false, false})
-	assertAffinityPinned(t, sink.snapshot(), []bool{false, false})
+	assertAffinityOutcomes(t, sink.snapshot(), telemetry.AffinityOutcomeNotApplicable, telemetry.AffinityOutcomeNotApplicable)
 }
 
 func TestHandlerGroupAffinityOverrideWinsOverGlobalSetting(t *testing.T) {
@@ -212,6 +236,9 @@ func TestHandlerSoftAffinityRetriesAndRebindsAfterFallbackSuccess(t *testing.T) 
 
 	assertAffinityAttemptKeys(t, forwarder.inputs, []string{"sk-one", "sk-one", "sk-two", "sk-two"})
 	assertAffinityHits(t, sink.snapshot(), []bool{false, true, true})
+	// 第 2 个请求首次尝试落在绑定账号上（随后限流重试），按命中记。
+	assertAffinityOutcomes(t, sink.snapshot(),
+		telemetry.AffinityOutcomeNew, telemetry.AffinityOutcomeHit, telemetry.AffinityOutcomeHit)
 }
 
 func TestHandlerSoftAffinitySkipsDisabledCredentialAndLearnsReplacement(t *testing.T) {
@@ -235,6 +262,8 @@ func TestHandlerSoftAffinitySkipsDisabledCredentialAndLearnsReplacement(t *testi
 
 	assertAffinityAttemptKeys(t, forwarder.inputs, []string{"sk-one", "sk-two", "sk-two"})
 	assertAffinityHits(t, sink.snapshot(), []bool{false, false, true})
+	assertAffinityOutcomes(t, sink.snapshot(),
+		telemetry.AffinityOutcomeNew, telemetry.AffinityOutcomeMissUnavailable, telemetry.AffinityOutcomeHit)
 }
 
 func TestHandlerDoesNotApplyAffinityWithoutInitialUserText(t *testing.T) {
@@ -251,6 +280,7 @@ func TestHandlerDoesNotApplyAffinityWithoutInitialUserText(t *testing.T) {
 
 	assertAffinityAttemptKeys(t, forwarder.inputs, []string{"sk-one", "sk-two"})
 	assertAffinityHits(t, sink.snapshot(), []bool{false, false})
+	assertAffinityOutcomes(t, sink.snapshot(), telemetry.AffinityOutcomeNotApplicable, telemetry.AffinityOutcomeNotApplicable)
 }
 
 func TestHandlerLearnsAffinityOnlyFromCleanCompletedStream(t *testing.T) {
@@ -272,6 +302,8 @@ func TestHandlerLearnsAffinityOnlyFromCleanCompletedStream(t *testing.T) {
 
 	assertAffinityAttemptKeys(t, forwarder.streamInputs, []string{"sk-one", "sk-two", "sk-two"})
 	assertAffinityHits(t, sink.snapshot(), []bool{false, false, true})
+	assertAffinityOutcomes(t, sink.snapshot(),
+		telemetry.AffinityOutcomeNew, telemetry.AffinityOutcomeNew, telemetry.AffinityOutcomeHit)
 }
 
 func TestHandlerIgnoresAffinityAfterCredentialIdentityChanges(t *testing.T) {
@@ -285,10 +317,11 @@ func TestHandlerIgnoresAffinityAfterCredentialIdentityChanges(t *testing.T) {
 		protocol.OpenAICompletions,
 		prefix,
 		map[uint]state.CredentialRef{1: oldRef},
+		[]uint{1},
 		"",
 	)
-	if initial.preferredCredentialID != 0 || !initial.key.Valid() {
-		t.Fatalf("initial affinity = %#v, want valid miss", initial)
+	if initial.preferredCredentialID != 0 || !initial.key.Valid() || initial.outcome != telemetry.AffinityOutcomeNew {
+		t.Fatalf("initial affinity = %#v, want valid new conversation", initial)
 	}
 	if !handler.affinityCache.RecordSuccess(
 		initial.key,
@@ -304,6 +337,7 @@ func TestHandlerIgnoresAffinityAfterCredentialIdentityChanges(t *testing.T) {
 		protocol.OpenAICompletions,
 		prefix,
 		map[uint]state.CredentialRef{1: oldRef},
+		[]uint{1},
 		"",
 	)
 	if hit.preferredCredentialID != 1 {
@@ -317,10 +351,11 @@ func TestHandlerIgnoresAffinityAfterCredentialIdentityChanges(t *testing.T) {
 		protocol.OpenAICompletions,
 		prefix,
 		map[uint]state.CredentialRef{1: changedRef},
+		[]uint{1},
 		"",
 	)
-	if stale.preferredCredentialID != 0 {
-		t.Fatalf("preferred credential after identity change = %d, want 0", stale.preferredCredentialID)
+	if stale.preferredCredentialID != 0 || stale.outcome != telemetry.AffinityOutcomeMissReauthorized {
+		t.Fatalf("affinity after identity change = %#v, want reauthorized miss without preference", stale)
 	}
 }
 
@@ -334,6 +369,7 @@ func TestHandlerDerivesPrivateContinuityWithoutReenablingDisabledAffinity(t *tes
 		protocol.OpenAICompletions,
 		[]byte(`{"v":1,"user":["hello"]}`),
 		map[uint]state.CredentialRef{1: {ID: 1, GroupID: 1, IdentityGeneration: 1}},
+		[]uint{1},
 		"",
 	)
 	if resolved.key.Valid() || resolved.preferredCredentialID != 0 || resolved.continuityKey == "" {
@@ -471,14 +507,14 @@ func assertAffinityHits(t *testing.T, events []telemetry.RequestEvent, want []bo
 	}
 }
 
-func assertAffinityPinned(t *testing.T, events []telemetry.RequestEvent, want []bool) {
+func assertAffinityOutcomes(t *testing.T, events []telemetry.RequestEvent, want ...telemetry.AffinityOutcome) {
 	t.Helper()
-	got := make([]bool, 0, len(events))
+	got := make([]telemetry.AffinityOutcome, 0, len(events))
 	for _, event := range events {
-		got = append(got, event.AffinityPinned)
+		got = append(got, event.AffinityOutcome)
 	}
 	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("affinity pinned = %#v, want %#v", got, want)
+		t.Fatalf("affinity outcomes = %v, want %v", got, want)
 	}
 }
 

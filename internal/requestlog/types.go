@@ -94,6 +94,7 @@ type ListQuery struct {
 	CostState           pricing.CostState
 	PricingCompleteness pricing.Completeness
 	CachePresent        *bool
+	AffinityOutcomes    []telemetry.AffinityOutcome
 	CredentialID        *uint
 	AttemptStatusCode   *int
 	FailureCategory     telemetry.FailureCategory
@@ -148,6 +149,7 @@ type Record struct {
 	ErrorSummary            string
 	AffinityHit             bool
 	AffinityKind            string
+	AffinityOutcome         telemetry.AffinityOutcome
 	Reasoning               reasoning.Config
 	Attempts                []Attempt
 	GroupID                 uint

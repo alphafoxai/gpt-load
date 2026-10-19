@@ -47,7 +47,12 @@ func (table *Table) QuoteForModeWithMultipliers(identity Identity, result usage.
 		if !ok {
 			return unavailableQuote(), nil
 		}
+		cacheValue, ok := quote.CacheValue.applyMultipliers(multipliers)
+		if !ok {
+			return unavailableQuote(), nil
+		}
 		quote.EstimatedCostNanoUSD = adjusted
+		quote.CacheValue = cacheValue
 		receipt.TotalNanoUSD = int64(adjusted)
 	}
 	receipt.SchemaVersion = 6
@@ -183,10 +188,15 @@ func (table *Table) QuoteForModeWithReceipt(
 	if partial {
 		completeness = CompletenessPartial
 	}
+	cacheValue, ok := cacheValueOf(prices, result.Tokens)
+	if !ok {
+		return unavailableQuote(), nil
+	}
 	return Quote{
 		State:                CostStatePriced,
 		Completeness:         completeness,
 		EstimatedCostNanoUSD: cost,
+		CacheValue:           cacheValue,
 	}, receipt
 }
 
