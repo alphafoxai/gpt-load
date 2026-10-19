@@ -29,10 +29,17 @@ type Observation struct {
 	epoch   uint64
 	version uint64
 	found   bool
+	expired bool
 }
 
 func (observation Observation) Found() bool {
 	return observation.found
+}
+
+// Expired reports that the lookup found a binding whose TTL had already
+// passed; the entry is dropped and the request counts as unbound.
+func (observation Observation) Expired() bool {
+	return observation.expired
 }
 
 type cacheEntry struct {
@@ -105,9 +112,9 @@ func (cache *Cache) Lookup(key Key) Observation {
 	}
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
-	element := cache.currentElementLocked(key, cache.now())
+	element, expired := cache.currentElementLocked(key, cache.now())
 	if element == nil {
-		return Observation{key: key, epoch: cache.epoch}
+		return Observation{key: key, epoch: cache.epoch, expired: expired}
 	}
 	cache.recent.MoveToFront(element)
 	entry := element.Value.(*cacheEntry)
@@ -133,7 +140,7 @@ func (cache *Cache) RecordSuccess(key Key, observed Observation, target Target) 
 		return false
 	}
 	now := cache.now()
-	element := cache.currentElementLocked(key, now)
+	element, _ := cache.currentElementLocked(key, now)
 	if observed.found {
 		if element != nil {
 			current := element.Value.(*cacheEntry)
@@ -168,17 +175,19 @@ func (cache *Cache) entryCount() int {
 	return len(cache.entries)
 }
 
-func (cache *Cache) currentElementLocked(key Key, now time.Time) *list.Element {
-	element := cache.entries[key]
+// currentElementLocked returns the live entry for key. expired is true when an
+// entry existed but its TTL had passed; that entry is removed.
+func (cache *Cache) currentElementLocked(key Key, now time.Time) (element *list.Element, expired bool) {
+	element = cache.entries[key]
 	if element == nil {
-		return nil
+		return nil, false
 	}
 	entry := element.Value.(*cacheEntry)
 	if !now.Before(entry.expiresAt) {
 		cache.removeLocked(element)
-		return nil
+		return nil, true
 	}
-	return element
+	return element, false
 }
 
 func (cache *Cache) insertLocked(key Key, target Target, now time.Time) bool {

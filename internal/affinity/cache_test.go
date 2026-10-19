@@ -41,12 +41,19 @@ func TestCacheLookupDoesNotRefreshTTL(t *testing.T) {
 	cache.RecordSuccess(key, Observation{}, target)
 
 	now = now.Add(50 * time.Minute)
-	if !cache.Lookup(key).Found() {
-		t.Fatal("Lookup() before expiry = miss, want hit")
+	if got := cache.Lookup(key); !got.Found() || got.Expired() {
+		t.Fatalf("Lookup() before expiry = %#v, want live hit", got)
 	}
 	now = now.Add(11 * time.Minute)
-	if got := cache.Lookup(key); got.Found() {
-		t.Fatalf("Lookup() after original expiry = %#v, want miss", got)
+	if got := cache.Lookup(key); got.Found() || !got.Expired() {
+		t.Fatalf("Lookup() after original expiry = %#v, want expired miss", got)
+	}
+	// The expired entry is dropped, so a later lookup is a plain miss.
+	if got := cache.Lookup(key); got.Found() || got.Expired() {
+		t.Fatalf("Lookup() after expiry was reported = %#v, want plain miss", got)
+	}
+	if got := cache.Lookup(Key("never")); got.Expired() {
+		t.Fatal("Lookup() of an unknown key reported expired")
 	}
 }
 
