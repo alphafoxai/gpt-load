@@ -95,27 +95,29 @@ type ListQuery struct {
 	PricingCompleteness pricing.Completeness
 	CachePresent        *bool
 	AffinityOutcomes    []telemetry.AffinityOutcome
-	CredentialID        *uint
-	AttemptStatusCode   *int
-	FailureCategory     telemetry.FailureCategory
-	AttemptErrorCode    string
-	RetryState          RetryState
-	RetryCountMin       *int
-	RetryCountMax       *int
-	FirstResponseMinMS  *int64
-	FirstResponseMaxMS  *int64
-	DurationMinMS       *int64
-	DurationMaxMS       *int64
-	InputTokensMin      *int64
-	InputTokensMax      *int64
-	OutputTokensMin     *int64
-	OutputTokensMax     *int64
-	CostMinNanoUSD      *int64
-	CostMaxNanoUSD      *int64
-	Limit               int
-	Cursor              *Cursor
-	Page                int
-	PageSize            int
+	// AffinityKey 精确匹配会话标识（16 位小写十六进制）；空值不筛选。
+	AffinityKey        string
+	CredentialID       *uint
+	AttemptStatusCode  *int
+	FailureCategory    telemetry.FailureCategory
+	AttemptErrorCode   string
+	RetryState         RetryState
+	RetryCountMin      *int
+	RetryCountMax      *int
+	FirstResponseMinMS *int64
+	FirstResponseMaxMS *int64
+	DurationMinMS      *int64
+	DurationMaxMS      *int64
+	InputTokensMin     *int64
+	InputTokensMax     *int64
+	OutputTokensMin    *int64
+	OutputTokensMax    *int64
+	CostMinNanoUSD     *int64
+	CostMaxNanoUSD     *int64
+	Limit              int
+	Cursor             *Cursor
+	Page               int
+	PageSize           int
 }
 
 type AccessKeyRef struct {
@@ -125,49 +127,52 @@ type AccessKeyRef struct {
 }
 
 type Record struct {
-	RequestAudit            *requestaudit.Result
-	AutoDecision            *automodel.Decision
-	TotalPricing            telemetry.PricingObservation
-	RequestID               string
-	CompletedAtMS           int64
-	AccessKey               AccessKeyRef
-	Protocol                protocol.Protocol
-	Operation               execution.Operation
-	UpstreamProtocol        protocol.Protocol
-	ClientIP                string
-	ClientModel             string
-	UpstreamModel           string
-	UpstreamReportedModel   string
-	ModelConsistency        telemetry.ModelConsistency
-	Status                  telemetry.RequestStatus
-	StatusCode              int
-	Stream                  bool
-	FirstResponseMs         *int64
-	DurationMs              int64
-	AttemptCount            int
-	ErrorCode               string
-	ErrorSummary            string
-	AffinityHit             bool
-	AffinityKind            string
-	AffinityOutcome         telemetry.AffinityOutcome
-	Reasoning               reasoning.Config
-	Attempts                []Attempt
-	GroupID                 uint
-	ChannelID               channel.ID
-	CredentialID            uint
-	RouteMode               channel.RouteMode
-	UsageState              usage.State
-	CostState               pricing.CostState
-	PricingCompleteness     pricing.Completeness
-	PricingMode             pricing.Mode
-	ContextThresholdTokens  *int64
-	UncachedInputTokens     int64
-	CacheReadTokens         int64
-	CacheWrite5MTokens      int64
-	CacheWrite1HTokens      int64
-	CacheWriteUnknownTokens int64
-	OutputTokens            int64
-	EstimatedCostNanoUSD    int64
+	RequestAudit              *requestaudit.Result
+	AutoDecision              *automodel.Decision
+	TotalPricing              telemetry.PricingObservation
+	RequestID                 string
+	CompletedAtMS             int64
+	AccessKey                 AccessKeyRef
+	Protocol                  protocol.Protocol
+	Operation                 execution.Operation
+	UpstreamProtocol          protocol.Protocol
+	ClientIP                  string
+	ClientModel               string
+	UpstreamModel             string
+	UpstreamReportedModel     string
+	ModelConsistency          telemetry.ModelConsistency
+	Status                    telemetry.RequestStatus
+	StatusCode                int
+	Stream                    bool
+	FirstResponseMs           *int64
+	DurationMs                int64
+	AttemptCount              int
+	ErrorCode                 string
+	ErrorSummary              string
+	AffinityHit               bool
+	AffinityKind              string
+	AffinityOutcome           telemetry.AffinityOutcome
+	AffinityKey               string
+	AffinityBoundCredentialID uint
+	AffinityMissReason        telemetry.AffinityMissReason
+	Reasoning                 reasoning.Config
+	Attempts                  []Attempt
+	GroupID                   uint
+	ChannelID                 channel.ID
+	CredentialID              uint
+	RouteMode                 channel.RouteMode
+	UsageState                usage.State
+	CostState                 pricing.CostState
+	PricingCompleteness       pricing.Completeness
+	PricingMode               pricing.Mode
+	ContextThresholdTokens    *int64
+	UncachedInputTokens       int64
+	CacheReadTokens           int64
+	CacheWrite5MTokens        int64
+	CacheWrite1HTokens        int64
+	CacheWriteUnknownTokens   int64
+	OutputTokens              int64
+	EstimatedCostNanoUSD      int64
 }
 
 type Page struct {

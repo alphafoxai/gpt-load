@@ -56,6 +56,7 @@ func (d *Anthropic) InspectRequest(req *ParsedRequest) (RequestMetadata, error) 
 
 	metadata.ObserveUsage = true
 	metadata.AffinityPrefix = inspectPromptAffinityPrefix(d.Protocol(), req.Body)
+	metadata.ClaudeCodeSessionID = inspectClaudeCodeSessionID(req.Body)
 	metadata.Reasoning = inspectAnthropicReasoning(req.Body)
 	metadata.Operation, metadata.RouteRequirement = chatExecutionMetadata(
 		d.Protocol(),

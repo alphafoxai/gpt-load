@@ -90,6 +90,13 @@ const routingFields: LogColumnId[] = [
   'upstream_protocol',
   'route_mode',
 ]
+const boundCredentialText = computed(() => {
+  const row = log.value
+  if (!row || row.affinity_bound_credential_id === null) return ''
+  if (row.affinity_bound_credential_name) return row.affinity_bound_credential_name
+  const id = '#' + row.affinity_bound_credential_id
+  return row.affinity_miss_reason === 'deleted' ? `${id} · ${t('logs.deleted')}` : id
+})
 const tokenFields = computed<LogColumnId[]>(() => [
   'input_tokens',
   'output_tokens',
@@ -479,6 +486,24 @@ function decisionRuleLabel(ruleID: string): string {
                 <dd>
                   <LogValue :row="log" :column="field" :groups="groups" :channels="channels" />
                 </dd>
+              </div>
+              <div v-if="log.affinity_key">
+                <dt>{{ t('logs.affinity.session') }}</dt>
+                <dd class="modern-log-affinity-key">
+                  <LogFilterLink
+                    :label="t('logs.filterByValue', { value: log.affinity_key })"
+                    @click="$emit('filter', { affinity_key: log.affinity_key })"
+                    ><AppOverflowText :text="log.affinity_key"
+                  /></LogFilterLink>
+                </dd>
+              </div>
+              <div v-if="log.affinity_bound_credential_id !== null">
+                <dt>{{ t('logs.affinity.boundCredential') }}</dt>
+                <dd>{{ boundCredentialText }}</dd>
+              </div>
+              <div v-if="log.affinity_miss_reason">
+                <dt>{{ t('logs.affinity.missReason') }}</dt>
+                <dd>{{ t('logs.affinity.missReasons.' + log.affinity_miss_reason) }}</dd>
               </div>
             </dl>
           </AppFormSection>
@@ -973,6 +998,9 @@ function decisionRuleLabel(ruleID: string): string {
 }
 /* 纯数值分段用等宽字，和列表里的数字列保持一致。 */
 .modern-log-detail-grid.is-numeric dd {
+  font-family: var(--modern-font-mono);
+}
+.modern-log-affinity-key {
   font-family: var(--modern-font-mono);
 }
 /* 整行字段（错误代码、上游请求 ID 等）取值会换行，且不含图标，

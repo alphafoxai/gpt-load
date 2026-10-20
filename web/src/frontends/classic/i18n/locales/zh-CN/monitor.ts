@@ -893,6 +893,7 @@ export default {
         affinityPromptPrefix: '提示词亲和命中',
         affinityPromptCacheKey: '缓存标识亲和命中',
         affinityResponseContinuity: '响应续接命中',
+        affinityClaudeCodeSession: 'Claude Code 会话命中',
         errorCode: '错误码',
         errorSummary: '错误消息',
         expandErrorMessage: '展开完整错误消息',

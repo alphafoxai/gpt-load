@@ -264,6 +264,61 @@ func TestHandlerSoftAffinitySkipsDisabledCredentialAndLearnsReplacement(t *testi
 	assertAffinityHits(t, sink.snapshot(), []bool{false, false, true})
 	assertAffinityOutcomes(t, sink.snapshot(),
 		telemetry.AffinityOutcomeNew, telemetry.AffinityOutcomeMissUnavailable, telemetry.AffinityOutcomeHit)
+	assertAffinityDiagnostics(t, sink.snapshot(),
+		affinityDiagnostic{bound: 0, reason: telemetry.AffinityMissReasonNone},
+		affinityDiagnostic{bound: 1, reason: telemetry.AffinityMissReasonDisabled},
+		affinityDiagnostic{bound: 2, reason: telemetry.AffinityMissReasonNone},
+	)
+}
+
+func TestHandlerRecordsCooldownAsAffinityMissReason(t *testing.T) {
+	forwarder := &scriptedForwarder{results: successfulAffinityResults(3)}
+	handler, _, registry := newHandlerForTest(t, forwarder, "sk-one", "sk-two")
+	sink := &recordingRequestLogSink{}
+	handler.requestLogSink = sink
+	engine := newAffinityTestEngine(t, handler)
+	body := `{"model":"gpt-4o","messages":[{"role":"user","content":"stable conversation"}]}`
+
+	serveAffinityRequest(t, engine, body)
+	firstCooldown := time.Now().Add(time.Hour)
+	if !registry.SetCooldown(1, firstCooldown) {
+		t.Fatal("SetCooldown(1) = false")
+	}
+	serveAffinityRequest(t, engine, body)
+	// 会话改绑到账号 2 后，账号 2 冷却、账号 1 恢复：未命中原因跟着绑定账号走。
+	if !registry.SetCooldown(2, time.Now().Add(time.Hour)) || !registry.ClearCooldownIfMatch(1, firstCooldown) {
+		t.Fatal("cooldown update failed")
+	}
+	serveAffinityRequest(t, engine, body)
+
+	assertAffinityAttemptKeys(t, forwarder.inputs, []string{"sk-one", "sk-two", "sk-one"})
+	assertAffinityOutcomes(t, sink.snapshot(),
+		telemetry.AffinityOutcomeNew, telemetry.AffinityOutcomeMissUnavailable, telemetry.AffinityOutcomeMissUnavailable)
+	assertAffinityDiagnostics(t, sink.snapshot(),
+		affinityDiagnostic{bound: 0, reason: telemetry.AffinityMissReasonNone},
+		affinityDiagnostic{bound: 1, reason: telemetry.AffinityMissReasonCooldown},
+		affinityDiagnostic{bound: 2, reason: telemetry.AffinityMissReasonCooldown},
+	)
+}
+
+type affinityDiagnostic struct {
+	bound  uint
+	reason telemetry.AffinityMissReason
+}
+
+// assertAffinityDiagnostics 检查绑定账号与未命中原因，并要求同一会话的每个请求带同一个 16 位会话标识。
+func assertAffinityDiagnostics(t *testing.T, events []telemetry.RequestEvent, want ...affinityDiagnostic) {
+	t.Helper()
+	got := make([]affinityDiagnostic, 0, len(events))
+	for _, event := range events {
+		got = append(got, affinityDiagnostic{bound: event.AffinityBoundCredentialID, reason: event.AffinityMissReason})
+		if !affinity.ValidLogID(event.AffinityKey) || event.AffinityKey != events[0].AffinityKey {
+			t.Fatalf("affinity keys differ or are malformed: %q vs %q", event.AffinityKey, events[0].AffinityKey)
+		}
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("affinity diagnostics = %+v, want %+v", got, want)
+	}
 }
 
 func TestHandlerDoesNotApplyAffinityWithoutInitialUserText(t *testing.T) {
@@ -315,10 +370,9 @@ func TestHandlerIgnoresAffinityAfterCredentialIdentityChanges(t *testing.T) {
 		snapshot,
 		1,
 		protocol.OpenAICompletions,
-		prefix,
+		affinitySignals{prefix: prefix},
 		map[uint]state.CredentialRef{1: oldRef},
 		[]uint{1},
-		"",
 	)
 	if initial.preferredCredentialID != 0 || !initial.key.Valid() || initial.outcome != telemetry.AffinityOutcomeNew {
 		t.Fatalf("initial affinity = %#v, want valid new conversation", initial)
@@ -335,10 +389,9 @@ func TestHandlerIgnoresAffinityAfterCredentialIdentityChanges(t *testing.T) {
 		snapshot,
 		1,
 		protocol.OpenAICompletions,
-		prefix,
+		affinitySignals{prefix: prefix},
 		map[uint]state.CredentialRef{1: oldRef},
 		[]uint{1},
-		"",
 	)
 	if hit.preferredCredentialID != 1 {
 		t.Fatalf("preferred credential = %d, want 1", hit.preferredCredentialID)
@@ -349,10 +402,9 @@ func TestHandlerIgnoresAffinityAfterCredentialIdentityChanges(t *testing.T) {
 		snapshot,
 		1,
 		protocol.OpenAICompletions,
-		prefix,
+		affinitySignals{prefix: prefix},
 		map[uint]state.CredentialRef{1: changedRef},
 		[]uint{1},
-		"",
 	)
 	if stale.preferredCredentialID != 0 || stale.outcome != telemetry.AffinityOutcomeMissReauthorized {
 		t.Fatalf("affinity after identity change = %#v, want reauthorized miss without preference", stale)
@@ -367,10 +419,9 @@ func TestHandlerDerivesPrivateContinuityWithoutReenablingDisabledAffinity(t *tes
 		snapshot,
 		1,
 		protocol.OpenAICompletions,
-		[]byte(`{"v":1,"user":["hello"]}`),
+		affinitySignals{prefix: []byte(`{"v":1,"user":["hello"]}`)},
 		map[uint]state.CredentialRef{1: {ID: 1, GroupID: 1, IdentityGeneration: 1}},
 		[]uint{1},
-		"",
 	)
 	if resolved.key.Valid() || resolved.preferredCredentialID != 0 || resolved.continuityKey == "" {
 		t.Fatalf("disabled affinity resolution = %#v", resolved)

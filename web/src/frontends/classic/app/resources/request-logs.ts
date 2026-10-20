@@ -210,6 +210,10 @@ export interface RequestLogItemDto {
   affinity_hit: boolean
   affinity_kind: string
   affinity_outcome: string
+  affinity_key: string
+  affinity_bound_credential_id: number | null
+  affinity_bound_credential_name: string
+  affinity_miss_reason: string
   group_id: number | null
   channel_id: string | null
   credential_id: number | null
@@ -372,6 +376,10 @@ const itemFields = [
   'affinity_hit',
   'affinity_kind',
   'affinity_outcome',
+  'affinity_key',
+  'affinity_bound_credential_id',
+  'affinity_bound_credential_name',
+  'affinity_miss_reason',
   'group_id',
   'channel_id',
   'credential_id',
@@ -416,6 +424,12 @@ function projectNullableModel(value: unknown): string | null {
 function projectRequestID(value: unknown): string {
   const result = projectString(value)
   if (!requestIDPattern.test(result)) invalidResponse()
+  return result
+}
+
+function projectAffinityKey(value: unknown): string {
+  const result = projectString(value, { allowEmpty: true })
+  if (result !== '' && !/^[0-9a-f]{16}$/.test(result)) invalidResponse()
   return result
 }
 
@@ -728,6 +742,15 @@ function projectItemRecord(record: Record<string, unknown>): RequestLogItemDto {
     affinity_hit: projectBoolean(record.affinity_hit),
     affinity_kind: projectString(record.affinity_kind, { allowEmpty: true }),
     affinity_outcome: projectString(record.affinity_outcome, { allowEmpty: true }),
+    affinity_key: projectAffinityKey(record.affinity_key),
+    affinity_bound_credential_id:
+      record.affinity_bound_credential_id === null
+        ? null
+        : projectSafeInteger(record.affinity_bound_credential_id, { minimum: 1 }),
+    affinity_bound_credential_name: projectString(record.affinity_bound_credential_name, {
+      allowEmpty: true,
+    }),
+    affinity_miss_reason: projectString(record.affinity_miss_reason, { allowEmpty: true }),
     group_id: record.group_id === null ? null : projectSafeInteger(record.group_id, { minimum: 1 }),
     channel_id: record.channel_id === null ? null : projectChannelID(record.channel_id),
     credential_id:

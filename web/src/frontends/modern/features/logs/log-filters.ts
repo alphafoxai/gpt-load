@@ -2,6 +2,7 @@ import type { LocationQuery, LocationQueryRaw } from 'vue-router'
 import { accessProtocols } from '@modern/api/access-keys'
 import { affinityOutcomeFilters } from '@modern/api/cache-affinity'
 import {
+  affinityKeyPattern,
   internalLogFilters,
   logFilterNames,
   logOperations,
@@ -109,6 +110,7 @@ export const advancedLogFilters: readonly LogFilterDefinition[] = [
     kind: 'select',
     values: logFilterOptions.affinity_outcome,
   },
+  { key: 'affinity_key', section: 'routing', kind: 'text', admin: true },
   ...(['first_response', 'duration', 'input_tokens', 'output_tokens', 'cost'] as const).flatMap(
     (name): LogFilterDefinition[] => [
       {
@@ -157,6 +159,8 @@ export function logFilterErrors(filters: LogQuery): Partial<Record<LogFilterName
       errors[key] = 'invalidText'
     if (key === 'request_id' && !logRequestPattern.test(value)) errors[key] = 'invalidRequest'
     if (key === 'channel_id' && !/^[a-z][a-z0-9_]{0,99}$/.test(value)) errors[key] = 'invalidValue'
+    if (key === 'affinity_key' && !affinityKeyPattern.test(value))
+      errors[key] = 'invalidAffinityKey'
     if (key === 'limit' && !['20', '50', '100'].includes(value)) errors[key] = 'invalidValue'
     if (['group_id', 'credential_id', 'access_key_id', 'from_ms', 'to_ms'].includes(key)) {
       if (

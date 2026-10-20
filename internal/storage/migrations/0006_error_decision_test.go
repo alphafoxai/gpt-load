@@ -25,6 +25,7 @@ func TestErrorDecisionMigrationPreservesAttemptsAndAddsDecisionContract(t *testi
 		"RequestAudit", "AuditCostNanoUSD", "AuditPricingCompleteness", "AffinityKind", "AutoDecision", "DecisionModel", "DecisionCostNanoUSD",
 		"DecisionPricingCompleteness", "DecisionGroupID", "DecisionChannelID", "DecisionCredentialID", "FirstOutputMs", "LastOutputMs", "ClientIP",
 		"AffinityOutcome", "CacheReadSavingsNanoUSD", "CacheWritePremiumNanoUSD",
+		"AffinityKey", "AffinityBoundCredentialID", "AffinityMissReason",
 	).Create(&request).Error; err != nil {
 		t.Fatalf("create request log: %v", err)
 	}

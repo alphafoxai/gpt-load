@@ -92,6 +92,9 @@ func (service *Service) List(ctx context.Context, input ListQuery) (Page, error)
 	if len(input.AffinityOutcomes) > 0 {
 		query = query.Where("affinity_outcome IN ?", input.AffinityOutcomes)
 	}
+	if input.AffinityKey != "" {
+		query = query.Where("affinity_key = ?", input.AffinityKey)
+	}
 	if input.RetryState == RetryStateRetried {
 		query = query.Where("attempt_count > 1")
 	} else if input.RetryState == RetryStateNotRetried {
@@ -385,30 +388,33 @@ func decodeRequestLogRows(rows []models.RequestLog) ([]Record, error) {
 			clientIP = *row.ClientIP
 		}
 		records = append(records, Record{
-			AutoDecision:          decision,
-			RequestAudit:          audit,
-			TotalPricing:          total,
-			RequestID:             row.ID,
-			CompletedAtMS:         row.CompletedAtMS,
-			AccessKey:             AccessKeyRef{ID: row.AccessKeyID, Deleted: true},
-			Protocol:              protocol.Protocol(row.Protocol),
-			Operation:             execution.Operation(row.Operation),
-			ClientIP:              clientIP,
-			ClientModel:           row.ClientModel,
-			UpstreamModel:         row.UpstreamModel,
-			UpstreamReportedModel: row.UpstreamReportedModel,
-			ModelConsistency:      telemetry.ModelConsistency(row.ModelConsistency),
-			Status:                telemetry.RequestStatus(row.Status),
-			StatusCode:            row.StatusCode,
-			Stream:                row.Stream,
-			FirstResponseMs:       row.FirstResponseMs,
-			DurationMs:            row.DurationMs,
-			AttemptCount:          row.AttemptCount,
-			ErrorCode:             row.ErrorCode,
-			ErrorSummary:          row.ErrorSummary,
-			AffinityHit:           row.AffinityHit,
-			AffinityKind:          row.AffinityKind,
-			AffinityOutcome:       telemetry.AffinityOutcome(row.AffinityOutcome),
+			AutoDecision:              decision,
+			RequestAudit:              audit,
+			TotalPricing:              total,
+			RequestID:                 row.ID,
+			CompletedAtMS:             row.CompletedAtMS,
+			AccessKey:                 AccessKeyRef{ID: row.AccessKeyID, Deleted: true},
+			Protocol:                  protocol.Protocol(row.Protocol),
+			Operation:                 execution.Operation(row.Operation),
+			ClientIP:                  clientIP,
+			ClientModel:               row.ClientModel,
+			UpstreamModel:             row.UpstreamModel,
+			UpstreamReportedModel:     row.UpstreamReportedModel,
+			ModelConsistency:          telemetry.ModelConsistency(row.ModelConsistency),
+			Status:                    telemetry.RequestStatus(row.Status),
+			StatusCode:                row.StatusCode,
+			Stream:                    row.Stream,
+			FirstResponseMs:           row.FirstResponseMs,
+			DurationMs:                row.DurationMs,
+			AttemptCount:              row.AttemptCount,
+			ErrorCode:                 row.ErrorCode,
+			ErrorSummary:              row.ErrorSummary,
+			AffinityHit:               row.AffinityHit,
+			AffinityKind:              row.AffinityKind,
+			AffinityOutcome:           telemetry.AffinityOutcome(row.AffinityOutcome),
+			AffinityKey:               row.AffinityKey,
+			AffinityBoundCredentialID: row.AffinityBoundCredentialID,
+			AffinityMissReason:        telemetry.AffinityMissReason(row.AffinityMissReason),
 			Reasoning: reasoning.Config{
 				Mode:         row.ReasoningMode,
 				Effort:       row.ReasoningEffort,

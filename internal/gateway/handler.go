@@ -729,11 +729,16 @@ func (handler *Handler) Handle(ginContext *gin.Context) {
 		requestAffinity.kind = telemetry.AffinityResponseContinuity
 	} else {
 		requestAffinity = handler.resolveRequestAffinity(
-			snapshot, accessKey.ID, selectedRoute.Protocol, metadata.AffinityPrefix, allowedCredentialRefs, candidateGroupIDs, metadata.PromptCacheKey,
+			snapshot, accessKey.ID, selectedRoute.Protocol,
+			affinitySignals{
+				prefix: metadata.AffinityPrefix, promptCacheKey: metadata.PromptCacheKey,
+				claudeCodeSessionID: metadata.ClaudeCodeSessionID, model: model,
+			},
+			allowedCredentialRefs, candidateGroupIDs,
 		)
 		query.PreferredCredentialID = requestAffinity.preferredCredentialID
 	}
-	recorder.setAffinityOutcome(requestAffinity.outcome)
+	recorder.setAffinity(requestAffinity)
 	iterator := scheduler.New(snapshot, handler.registry, query)
 	handler.executeAttempts(
 		ginContext,
@@ -1067,7 +1072,7 @@ func (handler *Handler) executeAttempts(
 	) bool {
 		attemptSequence++
 		if attemptSequence == 1 {
-			recorder.settleAffinity(requestAffinity.settle(selection.CredentialID, selection.Group.AffinityEnabled))
+			recorder.settleAffinity(requestAffinity.settle(selection.CredentialID, selection.Group.AffinityEnabled, handler.affinityMissReason))
 		}
 		updateDebugHeaders(ginContext.Writer.Header(), selection.Group.Name, attemptSequence)
 		if recorder != nil {
@@ -1304,7 +1309,7 @@ func (handler *Handler) executeAttempts(
 		attemptSequence++
 		forwardAttempts++
 		if attemptSequence == 1 {
-			recorder.settleAffinity(requestAffinity.settle(selection.CredentialID, selection.Group.AffinityEnabled))
+			recorder.settleAffinity(requestAffinity.settle(selection.CredentialID, selection.Group.AffinityEnabled, handler.affinityMissReason))
 		}
 		updateDebugHeaders(ginContext.Writer.Header(), selection.Group.Name, attemptSequence)
 		executionRequestID := "untracked"

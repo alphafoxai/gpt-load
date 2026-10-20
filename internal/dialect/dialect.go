@@ -19,10 +19,12 @@ type ParsedRequest struct {
 }
 
 type RequestMetadata struct {
-	Model                    *string
-	Stream                   bool
-	AffinityPrefix           []byte
-	PromptCacheKey           string `json:"-"`
+	Model          *string
+	Stream         bool
+	AffinityPrefix []byte
+	PromptCacheKey string `json:"-"`
+	// ClaudeCodeSessionID 是 Anthropic metadata.user_id 里的 Claude Code 会话 UUID（小写），仅用于亲和。
+	ClaudeCodeSessionID      string `json:"-"`
 	Operation                execution.Operation
 	RouteRequirement         execution.RouteRequirement
 	ResponsesStorePreference execution.ResponsesStorePreference

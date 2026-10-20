@@ -24,7 +24,7 @@ func TestMapEventV3PersistsMillisecondLedgerAndQuotesUpstreamModel(t *testing.T)
 		ModelConsistency:      telemetry.ModelConsistencyMatch,
 		Status:                telemetry.RequestStatusSuccess,
 		StatusCode:            200,
-		AffinityHit:           true, AffinityKind: telemetry.AffinityPromptCacheKey,
+		AffinityHit:           true, AffinityKind: telemetry.AffinityPromptCacheKey, AffinityBoundCredentialID: 9,
 		Attempts: []telemetry.Attempt{{
 			Sequence: 1, GroupID: 73, ChannelID: channel.OpenAI, CredentialID: 9,
 			Operation: execution.OperationChatCompletion, RouteMode: channel.RouteNative,

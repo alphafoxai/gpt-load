@@ -29,7 +29,7 @@ export const zhCN = {
   cacheHint:
     '缓存读取 Token ÷ 输入 Token 总量。输入包含未缓存输入、缓存读取和缓存写入；缓存写入不计为命中。',
   stickyHint:
-    '续接请求：到达时会话已绑定账号的请求（亲和有效期内同一提示前缀或 prompt_cache_key，或带 previous_response_id）。命中率 = 落在原账号的续接请求 ÷ 续接请求。未命中原因见「缓存与粘性」页。',
+    '续接请求：到达时会话已绑定账号的请求（亲和有效期内同一 prompt_cache_key、Claude Code 会话或提示前缀，或带 previous_response_id）。命中率 = 落在原账号的续接请求 ÷ 续接请求。未命中原因见「缓存与粘性」页。',
   trend: '用量趋势',
   bucket: '每 {minutes} 分钟',
   composition: 'Token 构成',
@@ -90,7 +90,7 @@ export const enUS = {
   cacheHint:
     'Cache read tokens divided by all input tokens. Input includes uncached input, cache reads and cache writes; cache writes do not count as hits.',
   stickyHint:
-    'Follow-ups are requests whose conversation already had a pinned account when they arrived (same prompt prefix or prompt_cache_key within the affinity TTL, or a previous_response_id). Rate = follow-ups routed to the pinned account ÷ follow-ups. Miss reasons are on the Cache & stickiness page.',
+    'Follow-ups are requests whose conversation already had a pinned account when they arrived (same prompt_cache_key, Claude Code session or prompt prefix within the affinity TTL, or a previous_response_id). Rate = follow-ups routed to the pinned account ÷ follow-ups. Miss reasons are on the Cache & stickiness page.',
   trend: 'Usage trend',
   bucket: 'Every {minutes} min',
   composition: 'Token breakdown',
@@ -152,7 +152,7 @@ export const jaJP = {
   cacheHint:
     'キャッシュ読み取り Token ÷ 入力 Token 合計。入力には非キャッシュ入力、読み取り、書き込みを含みます。書き込みはヒットに含めません。',
   stickyHint:
-    '継続リクエスト：到着時に会話がアカウントに固定済みのリクエスト（有効期間内の同一プロンプト接頭辞・prompt_cache_key、または previous_response_id）。率 = 元のアカウントに振り分けられた継続リクエスト ÷ 継続リクエスト。未ヒットの理由は「キャッシュとスティッキー」ページで確認できます。',
+    '継続リクエスト：到着時に会話がアカウントに固定済みのリクエスト（有効期間内の同一 prompt_cache_key・Claude Code セッション・プロンプト接頭辞、または previous_response_id）。率 = 元のアカウントに振り分けられた継続リクエスト ÷ 継続リクエスト。未ヒットの理由は「キャッシュとスティッキー」ページで確認できます。',
   trend: '使用量の推移',
   bucket: '{minutes} 分ごと',
   composition: 'Token 内訳',

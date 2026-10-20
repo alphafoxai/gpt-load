@@ -79,6 +79,7 @@ func testModelCooldownMigration(t *testing.T, open func(*testing.T) *gorm.DB) {
 					"RequestAudit", "AuditCostNanoUSD", "AuditPricingCompleteness", "AffinityKind", "AutoDecision", "DecisionModel", "DecisionCostNanoUSD",
 					"DecisionPricingCompleteness", "DecisionGroupID", "DecisionChannelID", "DecisionCredentialID", "ClientIP",
 					"AffinityOutcome", "CacheReadSavingsNanoUSD", "CacheWritePremiumNanoUSD",
+					"AffinityKey", "AffinityBoundCredentialID", "AffinityMissReason",
 				).Create(&legacyRequest).Error; err != nil {
 					t.Fatal(err)
 				}

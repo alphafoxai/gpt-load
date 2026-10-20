@@ -138,6 +138,8 @@ function affinityTooltip(log: RequestLogItemDto): string {
       return t('monitor.logs.drawer.affinityPromptCacheKey')
     case 'response_continuity':
       return t('monitor.logs.drawer.affinityResponseContinuity')
+    case 'claude_code_session':
+      return t('monitor.logs.drawer.affinityClaudeCodeSession')
     default:
       return t('monitor.logs.drawer.affinity')
   }

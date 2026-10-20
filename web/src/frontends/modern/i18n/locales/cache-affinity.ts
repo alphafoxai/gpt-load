@@ -42,10 +42,10 @@ export const zhCN = {
     unrecorded: '未记录',
   },
   outcomeHints: {
-    hit: '亲和有效期内，提示前缀或 prompt_cache_key 命中，请求路由到原账号。',
+    hit: '亲和有效期内，prompt_cache_key、Claude Code 会话或提示前缀命中，请求路由到原账号。',
     continuation: '使用 previous_response_id 续接，固定到产生该响应的账号。',
     miss_unavailable:
-      '绑定账号所在分组仍可服务本次请求，但账号在首次尝试时不可用（冷却、限流、并发满、额度用尽、已停用、已删除或待重新授权）。',
+      '绑定账号所在分组仍可服务本次请求，但账号在首次尝试时不可用（冷却、限流、并发满、额度用尽、已停用、已删除或待重新授权）。具体原因见请求详情。',
     miss_excluded:
       '绑定账号所在分组不再服务本次请求（分组被删除或关闭亲和，或不在该访问密钥/模型的候选范围）。',
     miss_reauthorized: '原账号的身份已变化（重新授权为另一个账号）。',
@@ -160,11 +160,11 @@ export const enUS = {
     unrecorded: 'Not recorded',
   },
   outcomeHints: {
-    hit: 'Within the affinity TTL, the prompt prefix or prompt_cache_key matched and the request went to the pinned account.',
+    hit: 'Within the affinity TTL, the prompt_cache_key, Claude Code session or prompt prefix matched and the request went to the pinned account.',
     continuation:
       'Continued with previous_response_id and pinned to the account that produced the response.',
     miss_unavailable:
-      'The pinned account’s group still serves this request, but the account was unavailable on the first attempt (cooldown, rate limit, concurrency full, quota exhausted, disabled, deleted, or awaiting re-authorization).',
+      'The pinned account’s group still serves this request, but the account was unavailable on the first attempt (cooldown, rate limit, concurrency full, quota exhausted, disabled, deleted, or awaiting re-authorization). The request details show the reason.',
     miss_excluded:
       'The pinned account’s group no longer serves this request (the group was removed or turned affinity off, or the account is outside this key’s or model’s candidates).',
     miss_reauthorized:
@@ -283,11 +283,11 @@ export const jaJP = {
     unrecorded: '未記録',
   },
   outcomeHints: {
-    hit: '親和性の有効期間内に、プレフィックスまたは prompt_cache_key が一致し、固定アカウントに振り分けられたリクエストです。',
+    hit: '親和性の有効期間内に、prompt_cache_key・Claude Code セッション・プレフィックスのいずれかが一致し、固定アカウントに振り分けられたリクエストです。',
     continuation:
       'previous_response_id で継続し、その応答を生成したアカウントに固定されたリクエストです。',
     miss_unavailable:
-      '固定アカウントの所属グループは本リクエストを引き続き処理しますが、最初の試行でアカウントが利用できませんでした（クールダウン、レート制限、同時実行数の上限、クォータ使い切り、無効化、削除、再認証待ち）。',
+      '固定アカウントの所属グループは本リクエストを引き続き処理しますが、最初の試行でアカウントが利用できませんでした（クールダウン、レート制限、同時実行数の上限、クォータ使い切り、無効化、削除、再認証待ち）。理由はリクエスト詳細に表示されます。',
     miss_excluded:
       '固定アカウントの所属グループは本リクエストを処理しなくなりました（グループの削除または親和性の無効化、またはこのキーやモデルの候補外）。',
     miss_reauthorized:

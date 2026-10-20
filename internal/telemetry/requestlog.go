@@ -160,9 +160,15 @@ type RequestEvent struct {
 	AffinityKind          string
 	// AffinityOutcome 是路由时（首次尝试）对会话绑定的判定；AffinityHit 恰好在结果为命中时为 true。
 	AffinityOutcome AffinityOutcome
-	Reasoning       reasoning.Config
-	Attempts        []Attempt
-	Usage           UsageObservation
+	// AffinityKey 是亲和键摘要的前 16 位十六进制（affinity.Key.LogID），同一会话的请求取值相同；没有亲和键时为空。
+	AffinityKey string
+	// AffinityBoundCredentialID 是请求到达时会话绑定的账号，仅在结果为命中或未命中时非零。
+	AffinityBoundCredentialID uint
+	// AffinityMissReason 说明绑定账号为什么没有接到首次尝试，仅在 miss_unavailable 时非空。
+	AffinityMissReason AffinityMissReason
+	Reasoning          reasoning.Config
+	Attempts           []Attempt
+	Usage              UsageObservation
 	// RequestBody 只在访问密钥开启请求内容记录时携带，是网关收到并解码后的客户端原始请求体。
 	RequestBody []byte
 }
@@ -180,7 +186,54 @@ const (
 	AffinityPromptPrefix       = "prompt_prefix"
 	AffinityPromptCacheKey     = "prompt_cache_key"
 	AffinityResponseContinuity = "response_continuity"
+	// AffinityClaudeCodeSession：按 Anthropic metadata.user_id 里的 Claude Code 会话 ID 与模型绑定。
+	AffinityClaudeCodeSession = "claude_code_session"
 )
+
+// AffinityMissReason 是 miss_unavailable 时绑定账号不可用的原因，取首次尝试那一刻账号的状态。
+type AffinityMissReason string
+
+const (
+	AffinityMissReasonNone AffinityMissReason = ""
+	// AffinityMissReasonDeleted：绑定账号已不在注册表里。
+	AffinityMissReasonDeleted AffinityMissReason = "deleted"
+	// AffinityMissReasonDisabled：绑定账号被停用。
+	AffinityMissReasonDisabled AffinityMissReason = "disabled"
+	// AffinityMissReasonAuthPending：绑定账号的凭据未就绪（等待刷新或重新授权）。
+	AffinityMissReasonAuthPending AffinityMissReason = "auth_pending"
+	// AffinityMissReasonBlacklisted：绑定账号被拉黑。
+	AffinityMissReasonBlacklisted AffinityMissReason = "blacklisted"
+	// AffinityMissReasonCooldown：绑定账号处于错误冷却（限流、上游错误）。
+	AffinityMissReasonCooldown AffinityMissReason = "cooldown"
+	// AffinityMissReasonQuotaCooldown：绑定账号额度用尽，冷却到额度恢复。
+	AffinityMissReasonQuotaCooldown AffinityMissReason = "quota_cooldown"
+	// AffinityMissReasonModelCooldown：绑定账号有模型级冷却（含额度类）。
+	AffinityMissReasonModelCooldown AffinityMissReason = "model_cooldown"
+	// AffinityMissReasonDeprioritized：绑定账号可用但没有被选中（分组优先级、路由方式或权重为 0）。
+	AffinityMissReasonDeprioritized AffinityMissReason = "deprioritized"
+)
+
+// AffinityMissReasons 列出所有可记录的未命中原因。
+var AffinityMissReasons = []AffinityMissReason{
+	AffinityMissReasonDeleted,
+	AffinityMissReasonDisabled,
+	AffinityMissReasonAuthPending,
+	AffinityMissReasonBlacklisted,
+	AffinityMissReasonCooldown,
+	AffinityMissReasonQuotaCooldown,
+	AffinityMissReasonModelCooldown,
+	AffinityMissReasonDeprioritized,
+}
+
+// Valid 接受已定义的原因；空值表示没有原因（非 miss_unavailable，或记录该字段之前的日志）。
+func (reason AffinityMissReason) Valid() bool {
+	for _, candidate := range AffinityMissReasons {
+		if reason == candidate {
+			return true
+		}
+	}
+	return false
+}
 
 // AffinityOutcome 描述请求到达时会话绑定的状态，以及首次尝试是否落在绑定的账号上。
 type AffinityOutcome string

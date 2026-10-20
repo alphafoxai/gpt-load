@@ -913,6 +913,7 @@ export default {
         affinityPromptPrefix: 'Prompt prefix affinity hit',
         affinityPromptCacheKey: 'Prompt cache key affinity hit',
         affinityResponseContinuity: 'Response continuation hit',
+        affinityClaudeCodeSession: 'Claude Code session affinity hit',
         errorCode: 'Error code',
         errorSummary: 'Error message',
         expandErrorMessage: 'Show full error message',

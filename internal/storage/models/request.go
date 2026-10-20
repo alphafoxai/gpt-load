@@ -37,7 +37,13 @@ type RequestLog struct {
 	AffinityHit                 bool                `gorm:"not null;default:false"`
 	AffinityKind                string              `gorm:"type:varchar(32);not null;default:''"`
 	// AffinityOutcome 取值见 telemetry.AffinityOutcome；空值表示记录该字段之前的日志。
-	AffinityOutcome         string `gorm:"type:varchar(32);not null;default:''"`
+	AffinityOutcome string `gorm:"type:varchar(32);not null;default:''"`
+	// AffinityKey 是亲和键摘要前 16 位十六进制，同一会话的请求相同；空值表示没有亲和键或记录该字段之前的日志。
+	AffinityKey string `gorm:"type:varchar(16);not null;default:''"`
+	// AffinityBoundCredentialID 是请求到达时会话绑定的账号；0 表示没有绑定。
+	AffinityBoundCredentialID uint `gorm:"not null;default:0"`
+	// AffinityMissReason 取值见 telemetry.AffinityMissReason，仅 miss_unavailable 时非空。
+	AffinityMissReason      string `gorm:"type:varchar(32);not null;default:''"`
 	ReasoningMode           string `gorm:"type:varchar(64);not null;default:''"`
 	ReasoningEffort         string `gorm:"type:varchar(64);not null;default:''"`
 	ReasoningBudgetTokens   *int64 `gorm:"column:reasoning_budget_tokens"`

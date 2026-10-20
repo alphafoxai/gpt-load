@@ -7,6 +7,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"gpt-load/internal/affinity"
 	"gpt-load/internal/execution"
 	"gpt-load/internal/platform/epochms"
 	"gpt-load/internal/platform/redact"
@@ -206,6 +207,9 @@ func mapEvent(
 		AffinityHit:                 event.AffinityHit,
 		AffinityKind:                event.AffinityKind,
 		AffinityOutcome:             string(event.AffinityOutcome),
+		AffinityKey:                 event.AffinityKey,
+		AffinityBoundCredentialID:   event.AffinityBoundCredentialID,
+		AffinityMissReason:          string(event.AffinityMissReason),
 		ReasoningMode:               event.Reasoning.Mode,
 		ReasoningEffort:             event.Reasoning.Effort,
 		ReasoningBudgetTokens:       event.Reasoning.BudgetTokens,
@@ -349,6 +353,18 @@ func validateFrozenObservation(event telemetry.RequestEvent) error {
 	}
 	if event.AffinityHit != event.AffinityOutcome.Hit() {
 		return fmt.Errorf("affinity hit disagrees with affinity outcome")
+	}
+	if event.AffinityKey != "" && !affinity.ValidLogID(event.AffinityKey) {
+		return fmt.Errorf("invalid affinity key")
+	}
+	// 绑定账号只在会话已绑定（命中或未命中）时记录；续接由响应绑定决定，不记。
+	boundByAffinity := event.AffinityOutcome == telemetry.AffinityOutcomeHit || event.AffinityOutcome.Miss()
+	if (event.AffinityBoundCredentialID != 0) != boundByAffinity {
+		return fmt.Errorf("affinity bound credential disagrees with affinity outcome")
+	}
+	if event.AffinityMissReason != telemetry.AffinityMissReasonNone &&
+		(!event.AffinityMissReason.Valid() || event.AffinityOutcome != telemetry.AffinityOutcomeMissUnavailable) {
+		return fmt.Errorf("invalid affinity miss reason")
 	}
 	for _, attempt := range event.Attempts {
 		if _, err := validatedAttemptObservation(attempt); err != nil {

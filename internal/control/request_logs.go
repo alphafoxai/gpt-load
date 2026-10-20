@@ -15,6 +15,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"gpt-load/internal/affinity"
 	"gpt-load/internal/automodel"
 	"gpt-load/internal/channel"
 	"gpt-load/internal/execution"
@@ -135,51 +136,55 @@ type requestLogPricingReceiptResponse struct {
 
 type requestLogItemResponse struct {
 	credentialDisplayResponse
-	RequestAudit              *requestAuditResponse        `json:"request_audit,omitempty"`
-	AutoDecision              *autoDecisionResponse        `json:"auto_decision,omitempty"`
-	TotalEstimatedCostNanoUSD string                       `json:"total_estimated_cost_nano_usd"`
-	TotalCostState            string                       `json:"total_cost_state"`
-	TotalPricingCompleteness  string                       `json:"total_pricing_completeness"`
-	RequestID                 string                       `json:"request_id"`
-	CompletedAtMS             int64                        `json:"completed_at_ms"`
-	AccessKey                 requestLogAccessKeyResponse  `json:"access_key"`
-	Protocol                  string                       `json:"protocol"`
-	Operation                 *execution.Operation         `json:"operation"`
-	UpstreamProtocol          *protocol.Protocol           `json:"upstream_protocol"`
-	ClientIP                  *string                      `json:"client_ip"`
-	ClientModel               *string                      `json:"client_model"`
-	UpstreamModel             *string                      `json:"upstream_model"`
-	UpstreamReportedModel     *string                      `json:"upstream_reported_model"`
-	ModelConsistency          telemetry.ModelConsistency   `json:"model_consistency"`
-	Reasoning                 *requestLogReasoningResponse `json:"reasoning"`
-	Status                    telemetry.RequestStatus      `json:"status"`
-	StatusCode                int                          `json:"status_code"`
-	Stream                    bool                         `json:"stream"`
-	FirstResponseMs           *int64                       `json:"first_response_ms"`
-	DurationMs                int64                        `json:"duration_ms"`
-	AttemptCount              int                          `json:"attempt_count"`
-	ErrorCode                 string                       `json:"error_code"`
-	ErrorSummary              string                       `json:"error_summary"`
-	AffinityHit               bool                         `json:"affinity_hit"`
-	AffinityKind              string                       `json:"affinity_kind"`
-	AffinityOutcome           string                       `json:"affinity_outcome"`
-	GroupID                   *uint                        `json:"group_id"`
-	ChannelID                 *channel.ID                  `json:"channel_id"`
-	CredentialID              *uint                        `json:"credential_id"`
-	CredentialName            string                       `json:"credential_name"`
-	RouteMode                 *channel.RouteMode           `json:"route_mode"`
-	UsageState                usage.State                  `json:"usage_state"`
-	CostState                 pricing.CostState            `json:"cost_state"`
-	PricingCompleteness       pricing.Completeness         `json:"pricing_completeness"`
-	PricingMode               *pricing.Mode                `json:"pricing_mode"`
-	ContextThresholdTokens    *string                      `json:"context_threshold_tokens"`
-	InputTokens               string                       `json:"input_tokens"`
-	CacheReadTokens           string                       `json:"cache_read_tokens"`
-	CacheWrite5MTokens        string                       `json:"cache_write_5m_tokens"`
-	CacheWrite1HTokens        string                       `json:"cache_write_1h_tokens"`
-	CacheWriteUnknownTokens   string                       `json:"cache_write_unknown_tokens"`
-	OutputTokens              string                       `json:"output_tokens"`
-	EstimatedCostNanoUSD      string                       `json:"estimated_cost_nano_usd"`
+	RequestAudit                *requestAuditResponse        `json:"request_audit,omitempty"`
+	AutoDecision                *autoDecisionResponse        `json:"auto_decision,omitempty"`
+	TotalEstimatedCostNanoUSD   string                       `json:"total_estimated_cost_nano_usd"`
+	TotalCostState              string                       `json:"total_cost_state"`
+	TotalPricingCompleteness    string                       `json:"total_pricing_completeness"`
+	RequestID                   string                       `json:"request_id"`
+	CompletedAtMS               int64                        `json:"completed_at_ms"`
+	AccessKey                   requestLogAccessKeyResponse  `json:"access_key"`
+	Protocol                    string                       `json:"protocol"`
+	Operation                   *execution.Operation         `json:"operation"`
+	UpstreamProtocol            *protocol.Protocol           `json:"upstream_protocol"`
+	ClientIP                    *string                      `json:"client_ip"`
+	ClientModel                 *string                      `json:"client_model"`
+	UpstreamModel               *string                      `json:"upstream_model"`
+	UpstreamReportedModel       *string                      `json:"upstream_reported_model"`
+	ModelConsistency            telemetry.ModelConsistency   `json:"model_consistency"`
+	Reasoning                   *requestLogReasoningResponse `json:"reasoning"`
+	Status                      telemetry.RequestStatus      `json:"status"`
+	StatusCode                  int                          `json:"status_code"`
+	Stream                      bool                         `json:"stream"`
+	FirstResponseMs             *int64                       `json:"first_response_ms"`
+	DurationMs                  int64                        `json:"duration_ms"`
+	AttemptCount                int                          `json:"attempt_count"`
+	ErrorCode                   string                       `json:"error_code"`
+	ErrorSummary                string                       `json:"error_summary"`
+	AffinityHit                 bool                         `json:"affinity_hit"`
+	AffinityKind                string                       `json:"affinity_kind"`
+	AffinityOutcome             string                       `json:"affinity_outcome"`
+	AffinityKey                 string                       `json:"affinity_key"`
+	AffinityBoundCredentialID   *uint                        `json:"affinity_bound_credential_id"`
+	AffinityBoundCredentialName string                       `json:"affinity_bound_credential_name"`
+	AffinityMissReason          string                       `json:"affinity_miss_reason"`
+	GroupID                     *uint                        `json:"group_id"`
+	ChannelID                   *channel.ID                  `json:"channel_id"`
+	CredentialID                *uint                        `json:"credential_id"`
+	CredentialName              string                       `json:"credential_name"`
+	RouteMode                   *channel.RouteMode           `json:"route_mode"`
+	UsageState                  usage.State                  `json:"usage_state"`
+	CostState                   pricing.CostState            `json:"cost_state"`
+	PricingCompleteness         pricing.Completeness         `json:"pricing_completeness"`
+	PricingMode                 *pricing.Mode                `json:"pricing_mode"`
+	ContextThresholdTokens      *string                      `json:"context_threshold_tokens"`
+	InputTokens                 string                       `json:"input_tokens"`
+	CacheReadTokens             string                       `json:"cache_read_tokens"`
+	CacheWrite5MTokens          string                       `json:"cache_write_5m_tokens"`
+	CacheWrite1HTokens          string                       `json:"cache_write_1h_tokens"`
+	CacheWriteUnknownTokens     string                       `json:"cache_write_unknown_tokens"`
+	OutputTokens                string                       `json:"output_tokens"`
+	EstimatedCostNanoUSD        string                       `json:"estimated_cost_nano_usd"`
 }
 
 type autoDecisionResponse struct {
@@ -497,6 +502,7 @@ func requestLogQueryUsesInternalFields(rawQuery string) bool {
 		"retry_count_min",
 		"retry_count_max",
 		"affinity_outcome",
+		"affinity_key",
 	} {
 		if _, exists := values[key]; exists {
 			return true
@@ -513,6 +519,9 @@ func sanitizeAccessKeyRequestLog(record requestlog.Record) requestlog.Record {
 	record.AffinityHit = false
 	record.AffinityKind = ""
 	record.AffinityOutcome = ""
+	record.AffinityKey = ""
+	record.AffinityBoundCredentialID = 0
+	record.AffinityMissReason = telemetry.AffinityMissReasonNone
 	record.GroupID = 0
 	record.ChannelID = ""
 	record.CredentialID = 0
@@ -566,7 +575,7 @@ func parseRequestLogQuery(rawQuery string) (requestlog.ListQuery, *app_errors.AP
 		"client_ip": {}, "client_model": {}, "upstream_model": {}, "model_consistency": {}, "access_key_id": {},
 		"status": {}, "request_id": {}, "protocol": {}, "operation": {}, "stream": {}, "final_status_code": {},
 		"audit_status": {}, "audit_rule": {},
-		"usage_state": {}, "cost_state": {}, "pricing_completeness": {}, "cache_present": {}, "affinity_outcome": {},
+		"usage_state": {}, "cost_state": {}, "pricing_completeness": {}, "cache_present": {}, "affinity_outcome": {}, "affinity_key": {},
 		"attempt_status_code": {}, "failure_category": {}, "error_code": {},
 		"retry_state": {}, "retry_count_min": {}, "retry_count_max": {},
 		"first_response_min_ms": {}, "first_response_max_ms": {},
@@ -756,6 +765,12 @@ func parseRequestLogQuery(rawQuery string) (requestlog.ListQuery, *app_errors.AP
 			return requestlog.ListQuery{}, app_errors.ErrValidation
 		}
 		query.AffinityOutcomes = outcomes
+	}
+	if value, ok := singleQueryValue(values, "affinity_key"); ok {
+		if !affinity.ValidLogID(value) {
+			return requestlog.ListQuery{}, app_errors.ErrValidation
+		}
+		query.AffinityKey = value
 	}
 	if value, ok := singleQueryValue(values, "attempt_status_code"); ok {
 		parsed, apiErr := parseRequestLogStatusCode(value)
@@ -1166,6 +1181,9 @@ func requestLogCredentialIDs(records []requestlog.Record) []uint {
 	ids := make([]uint, 0, len(records))
 	for _, record := range records {
 		ids = append(ids, record.CredentialID)
+		if record.AffinityBoundCredentialID != 0 {
+			ids = append(ids, record.AffinityBoundCredentialID)
+		}
 		if record.AutoDecision != nil {
 			ids = append(ids, record.AutoDecision.CredentialID)
 		}
@@ -1266,6 +1284,10 @@ func mapRequestLogItemResponse(
 		value := strconv.FormatInt(*record.ContextThresholdTokens, 10)
 		contextThresholdTokens = &value
 	}
+	boundCredentialID, err := nullableRequestLogID(record.AffinityBoundCredentialID, "affinity bound credential")
+	if err != nil {
+		return requestLogItemResponse{}, fmt.Errorf("map request log affinity bound credential: %w", err)
+	}
 	total := telemetry.TotalPricing(telemetry.PricingObservation{CostState: string(record.CostState), PricingCompleteness: string(record.PricingCompleteness), EstimatedCostNanoUSD: record.EstimatedCostNanoUSD}, record.AutoDecision, record.RequestAudit)
 	return requestLogItemResponse{
 		AutoDecision:              mapAutoDecisionResponse(record.AutoDecision, credentialLabels),
@@ -1280,43 +1302,47 @@ func mapRequestLogItemResponse(
 			Name:    record.AccessKey.Name,
 			Deleted: record.AccessKey.Deleted,
 		},
-		Protocol:                string(record.Protocol),
-		Operation:               operation,
-		UpstreamProtocol:        upstreamProtocol,
-		ClientIP:                nullableRequestLogModel(record.ClientIP),
-		ClientModel:             nullableRequestLogModel(record.ClientModel),
-		UpstreamModel:           nullableRequestLogModel(record.UpstreamModel),
-		UpstreamReportedModel:   nullableRequestLogModel(record.UpstreamReportedModel),
-		ModelConsistency:        record.ModelConsistency,
-		Reasoning:               mapRequestLogReasoning(record),
-		Status:                  record.Status,
-		StatusCode:              record.StatusCode,
-		Stream:                  record.Stream,
-		FirstResponseMs:         record.FirstResponseMs,
-		DurationMs:              record.DurationMs,
-		AttemptCount:            record.AttemptCount,
-		ErrorCode:               record.ErrorCode,
-		ErrorSummary:            record.ErrorSummary,
-		AffinityHit:             record.AffinityHit,
-		AffinityKind:            record.AffinityKind,
-		AffinityOutcome:         string(record.AffinityOutcome),
-		GroupID:                 usageCost.groupID,
-		ChannelID:               usageCost.channelID,
-		CredentialID:            usageCost.credentialID,
-		CredentialName:          credentialLabelFor(credentialLabels, usageCost.credentialID),
-		RouteMode:               routeMode,
-		UsageState:              record.UsageState,
-		CostState:               record.CostState,
-		PricingCompleteness:     record.PricingCompleteness,
-		PricingMode:             pricingMode,
-		ContextThresholdTokens:  contextThresholdTokens,
-		InputTokens:             strconv.FormatInt(inputTokens, 10),
-		CacheReadTokens:         strconv.FormatInt(record.CacheReadTokens, 10),
-		CacheWrite5MTokens:      strconv.FormatInt(record.CacheWrite5MTokens, 10),
-		CacheWrite1HTokens:      strconv.FormatInt(record.CacheWrite1HTokens, 10),
-		CacheWriteUnknownTokens: strconv.FormatInt(record.CacheWriteUnknownTokens, 10),
-		OutputTokens:            strconv.FormatInt(record.OutputTokens, 10),
-		EstimatedCostNanoUSD:    usageCost.estimatedCostNanoUSD,
+		Protocol:                    string(record.Protocol),
+		Operation:                   operation,
+		UpstreamProtocol:            upstreamProtocol,
+		ClientIP:                    nullableRequestLogModel(record.ClientIP),
+		ClientModel:                 nullableRequestLogModel(record.ClientModel),
+		UpstreamModel:               nullableRequestLogModel(record.UpstreamModel),
+		UpstreamReportedModel:       nullableRequestLogModel(record.UpstreamReportedModel),
+		ModelConsistency:            record.ModelConsistency,
+		Reasoning:                   mapRequestLogReasoning(record),
+		Status:                      record.Status,
+		StatusCode:                  record.StatusCode,
+		Stream:                      record.Stream,
+		FirstResponseMs:             record.FirstResponseMs,
+		DurationMs:                  record.DurationMs,
+		AttemptCount:                record.AttemptCount,
+		ErrorCode:                   record.ErrorCode,
+		ErrorSummary:                record.ErrorSummary,
+		AffinityHit:                 record.AffinityHit,
+		AffinityKind:                record.AffinityKind,
+		AffinityOutcome:             string(record.AffinityOutcome),
+		AffinityKey:                 record.AffinityKey,
+		AffinityBoundCredentialID:   boundCredentialID,
+		AffinityBoundCredentialName: credentialLabelFor(credentialLabels, boundCredentialID),
+		AffinityMissReason:          string(record.AffinityMissReason),
+		GroupID:                     usageCost.groupID,
+		ChannelID:                   usageCost.channelID,
+		CredentialID:                usageCost.credentialID,
+		CredentialName:              credentialLabelFor(credentialLabels, usageCost.credentialID),
+		RouteMode:                   routeMode,
+		UsageState:                  record.UsageState,
+		CostState:                   record.CostState,
+		PricingCompleteness:         record.PricingCompleteness,
+		PricingMode:                 pricingMode,
+		ContextThresholdTokens:      contextThresholdTokens,
+		InputTokens:                 strconv.FormatInt(inputTokens, 10),
+		CacheReadTokens:             strconv.FormatInt(record.CacheReadTokens, 10),
+		CacheWrite5MTokens:          strconv.FormatInt(record.CacheWrite5MTokens, 10),
+		CacheWrite1HTokens:          strconv.FormatInt(record.CacheWrite1HTokens, 10),
+		CacheWriteUnknownTokens:     strconv.FormatInt(record.CacheWriteUnknownTokens, 10),
+		OutputTokens:                strconv.FormatInt(record.OutputTokens, 10),
+		EstimatedCostNanoUSD:        usageCost.estimatedCostNanoUSD,
 	}, nil
 }
 

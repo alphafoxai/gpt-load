@@ -6,6 +6,20 @@ import { boolean, integer, list, oneOf, record, text } from './response'
 import { affinityOutcomes, type AffinityOutcome } from './cache-affinity'
 
 export const logStatuses = ['success', 'error', 'incomplete', 'canceled'] as const
+// 粘性未命中原因；'' 表示不是 miss_unavailable。
+export const affinityMissReasons = [
+  '',
+  'deleted',
+  'disabled',
+  'auth_pending',
+  'blacklisted',
+  'cooldown',
+  'quota_cooldown',
+  'model_cooldown',
+  'deprioritized',
+] as const
+export type AffinityMissReason = (typeof affinityMissReasons)[number]
+export const affinityKeyPattern = /^[0-9a-f]{16}$/
 export const logOperations = [
   'chat_completion',
   'responses_create',
@@ -61,6 +75,7 @@ export const logFilterNames = [
   'pricing_completeness',
   'cache_present',
   'affinity_outcome',
+  'affinity_key',
   'attempt_status_code',
   'failure_category',
   'error_code',
@@ -93,6 +108,7 @@ export const internalLogFilters: readonly LogFilterName[] = [
   'retry_state',
   'retry_count_min',
   'retry_count_max',
+  'affinity_key',
 ]
 export const logsKey = ['modern', 'logs'] as const
 export const logDetailKey = (id: string) => ['modern', 'log-detail', id] as const
@@ -130,6 +146,10 @@ export interface LogEntry {
   affinity_hit: boolean
   affinity_kind: string
   affinity_outcome: AffinityOutcome
+  affinity_key: string
+  affinity_bound_credential_id: number | null
+  affinity_bound_credential_name: string
+  affinity_miss_reason: AffinityMissReason
   group_id: number | null
   channel_id: string | null
   credential_id: number | null
@@ -309,6 +329,11 @@ function receipt(value: unknown): LogReceipt | null {
     }),
   }
 }
+function affinityKey(value: unknown): string {
+  const key = text(value)
+  if (key !== '' && !affinityKeyPattern.test(key)) throw new InvalidResponseError()
+  return key
+}
 function entry(value: unknown): LogEntry {
   const row = record(value)
   const key = record(row.access_key)
@@ -342,6 +367,10 @@ function entry(value: unknown): LogEntry {
     affinity_hit: boolean(row.affinity_hit),
     affinity_kind: text(row.affinity_kind),
     affinity_outcome: oneOf(row.affinity_outcome, affinityOutcomes),
+    affinity_key: affinityKey(row.affinity_key),
+    affinity_bound_credential_id: optionalNumber(row.affinity_bound_credential_id),
+    affinity_bound_credential_name: text(row.affinity_bound_credential_name),
+    affinity_miss_reason: oneOf(row.affinity_miss_reason, affinityMissReasons),
     group_id: optionalNumber(row.group_id),
     channel_id: optionalText(row.channel_id),
     credential_id: optionalNumber(row.credential_id),

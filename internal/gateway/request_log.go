@@ -79,6 +79,9 @@ type requestRecorder struct {
 	affinityHit          bool
 	affinityKind         string
 	affinityOutcome      telemetry.AffinityOutcome
+	affinityKey          string
+	affinityBound        uint
+	affinityMissReason   telemetry.AffinityMissReason
 	attempts             []telemetry.Attempt
 	attemptPricing       []frozenAttemptPricing
 	pendingPricing       frozenAttemptPricing
@@ -150,32 +153,35 @@ func (recorder *requestRecorder) emit() {
 	}
 	reportedModel, modelConsistency := requestOutcomeModelConsistency(recorder.outcome)
 	recorder.sink.Emit(telemetry.RequestEvent{
-		AutoDecision:          recorder.autoLogDecision(),
-		RequestAudit:          recorder.audit,
-		RequestID:             recorder.requestID,
-		CompletedAt:           completedAt.UTC(),
-		AccessKeyID:           recorder.accessKeyID,
-		Protocol:              recorder.protocol,
-		ClientIP:              recorder.clientIP,
-		ClientModel:           recorder.clientModel,
-		UpstreamModel:         recorder.outcome.upstreamModel,
-		UpstreamReportedModel: reportedModel,
-		ModelConsistency:      modelConsistency,
-		Status:                recorder.outcome.status,
-		StatusCode:            recorder.outcome.statusCode,
-		ErrorCode:             recorder.outcome.errorCode,
-		ErrorSummary:          recorder.outcome.errorSummary,
-		Stream:                recorder.stream,
-		FirstResponseMs:       recorder.firstResponseMs,
-		DurationMs:            duration.Milliseconds(),
-		AffinityHit:           recorder.affinityHit,
-		AffinityKind:          recorder.affinityKind,
-		AffinityOutcome:       recorder.affinityOutcome,
-		Reasoning:             recorder.reasoning,
-		Operation:             recorder.operation,
-		Attempts:              append([]telemetry.Attempt(nil), recorder.attempts...),
-		Usage:                 recorder.usage,
-		RequestBody:           recorder.requestBody,
+		AutoDecision:              recorder.autoLogDecision(),
+		RequestAudit:              recorder.audit,
+		RequestID:                 recorder.requestID,
+		CompletedAt:               completedAt.UTC(),
+		AccessKeyID:               recorder.accessKeyID,
+		Protocol:                  recorder.protocol,
+		ClientIP:                  recorder.clientIP,
+		ClientModel:               recorder.clientModel,
+		UpstreamModel:             recorder.outcome.upstreamModel,
+		UpstreamReportedModel:     reportedModel,
+		ModelConsistency:          modelConsistency,
+		Status:                    recorder.outcome.status,
+		StatusCode:                recorder.outcome.statusCode,
+		ErrorCode:                 recorder.outcome.errorCode,
+		ErrorSummary:              recorder.outcome.errorSummary,
+		Stream:                    recorder.stream,
+		FirstResponseMs:           recorder.firstResponseMs,
+		DurationMs:                duration.Milliseconds(),
+		AffinityHit:               recorder.affinityHit,
+		AffinityKind:              recorder.affinityKind,
+		AffinityOutcome:           recorder.affinityOutcome,
+		AffinityKey:               recorder.affinityKey,
+		AffinityBoundCredentialID: recorder.affinityBound,
+		AffinityMissReason:        recorder.affinityMissReason,
+		Reasoning:                 recorder.reasoning,
+		Operation:                 recorder.operation,
+		Attempts:                  append([]telemetry.Attempt(nil), recorder.attempts...),
+		Usage:                     recorder.usage,
+		RequestBody:               recorder.requestBody,
 	})
 }
 
@@ -216,23 +222,28 @@ func (recorder *requestRecorder) estimatedCostNanoUSD() int64 {
 	return telemetry.TotalPricing(recorder.usage.Pricing, recorder.autoDecision, recorder.audit).EstimatedCostNanoUSD
 }
 
-// setAffinityOutcome 记录解析阶段的判定；首次尝试前请求就被拒绝时，日志保留这个值。
-func (recorder *requestRecorder) setAffinityOutcome(outcome telemetry.AffinityOutcome) {
-	if recorder != nil {
-		recorder.affinityOutcome = outcome
-	}
-}
-
-// settleAffinity 在首次尝试时写入最终结果；命中时同时记录命中来源。
-func (recorder *requestRecorder) settleAffinity(outcome telemetry.AffinityOutcome, kind string) {
+// setAffinity 记录解析阶段的判定；首次尝试前请求就被拒绝时，日志保留这些值。
+func (recorder *requestRecorder) setAffinity(request requestAffinity) {
 	if recorder == nil {
 		return
 	}
-	recorder.affinityOutcome = outcome
-	recorder.affinityHit = outcome.Hit()
+	recorder.affinityOutcome = request.outcome
+	recorder.affinityKey = request.logKey()
+	recorder.affinityBound = request.boundCredentialID
+	recorder.affinityMissReason = request.missReason
+}
+
+// settleAffinity 在首次尝试时写入最终结果；命中时同时记录命中来源。
+func (recorder *requestRecorder) settleAffinity(settlement affinitySettlement) {
+	if recorder == nil {
+		return
+	}
+	recorder.affinityOutcome = settlement.outcome
+	recorder.affinityHit = settlement.outcome.Hit()
+	recorder.affinityMissReason = settlement.missReason
 	recorder.affinityKind = ""
 	if recorder.affinityHit {
-		recorder.affinityKind = kind
+		recorder.affinityKind = settlement.kind
 	}
 }
 
