@@ -403,10 +403,18 @@ func (s *Service) BatchProxies(ctx context.Context, request ProxyBatchRequest) e
 	})
 }
 
+// maxProxyImportEntries 限制一次导入的代理条数，与原来的行数上限一致。
+const maxProxyImportEntries = 1000
+
+// ImportProxies 每行可写一个或多个以空白分隔的代理；无效条目按所在行号报告，同一行只报一次。
 func (s *Service) ImportProxies(ctx context.Context, text string) (ProxyImportResult, error) {
 	lines := strings.Split(strings.TrimRight(strings.ReplaceAll(text, "\r\n", "\n"), "\n"), "\n")
 	result := ProxyImportResult{InvalidLines: []int{}}
-	if len(lines) > 1000 {
+	entries := 0
+	for _, line := range lines {
+		entries += len(strings.Fields(line))
+	}
+	if len(lines) > maxProxyImportEntries || entries > maxProxyImportEntries {
 		return result, app_errors.ErrValidation
 	}
 	err := s.writeProxies(ctx, func(tx *gorm.DB) error {
@@ -419,42 +427,70 @@ func (s *Service) ImportProxies(ctx context.Context, text string) (ProxyImportRe
 			fingerprints[proxy.Row.Fingerprint] = true
 		}
 		for index, line := range lines {
-			if strings.TrimSpace(line) == "" {
-				continue
+			lineInvalid := false
+			for _, entry := range strings.Fields(line) {
+				config, err := outboundproxy.CanonicalConnection(outboundproxy.Config{Mode: outboundproxy.ModeCustom, URL: proxyImportURL(entry)})
+				if err != nil {
+					if !lineInvalid {
+						result.InvalidLines = append(result.InvalidLines, index+1)
+						lineInvalid = true
+					}
+					continue
+				}
+				encoded, err := outboundproxy.Encode(config)
+				if err != nil {
+					return app_errors.ErrValidation
+				}
+				fingerprint := s.encryption.Hash(encoded)
+				if fingerprints[fingerprint] {
+					result.Duplicates++
+					continue
+				}
+				ciphertext, err := s.encryption.Encrypt(encoded)
+				if err != nil {
+					return app_errors.ErrInternalServer
+				}
+				endpoint, err := url.Parse(config.URL)
+				if err != nil {
+					return app_errors.ErrValidation
+				}
+				row := models.Proxy{Name: catalog.SuggestedName(endpoint.Host), Config: ciphertext, Fingerprint: fingerprint, Enabled: true}
+				if err := tx.Create(&row).Error; err != nil {
+					return proxyDatabaseError(err)
+				}
+				catalog[row.ID] = stateloader.ManagedProxy{Row: row}
+				fingerprints[fingerprint] = true
+				result.Imported++
 			}
-			config, err := outboundproxy.CanonicalConnection(outboundproxy.Config{Mode: outboundproxy.ModeCustom, URL: line})
-			if err != nil {
-				result.InvalidLines = append(result.InvalidLines, index+1)
-				continue
-			}
-			encoded, err := outboundproxy.Encode(config)
-			if err != nil {
-				return app_errors.ErrValidation
-			}
-			fingerprint := s.encryption.Hash(encoded)
-			if fingerprints[fingerprint] {
-				result.Duplicates++
-				continue
-			}
-			ciphertext, err := s.encryption.Encrypt(encoded)
-			if err != nil {
-				return app_errors.ErrInternalServer
-			}
-			endpoint, err := url.Parse(config.URL)
-			if err != nil {
-				return app_errors.ErrValidation
-			}
-			row := models.Proxy{Name: catalog.SuggestedName(endpoint.Host), Config: ciphertext, Fingerprint: fingerprint, Enabled: true}
-			if err := tx.Create(&row).Error; err != nil {
-				return proxyDatabaseError(err)
-			}
-			catalog[row.ID] = stateloader.ManagedProxy{Row: row}
-			fingerprints[fingerprint] = true
-			result.Imported++
 		}
 		return nil
 	})
 	return result, err
+}
+
+// proxyImportURL 把供应商常见的无协议写法转成 HTTP 代理 URL，已带协议的原样返回交给统一校验：
+// host:port、host:port:user:pass、user:pass@host:port。SOCKS5 需要写完整的 socks5:// URL。
+// 用户名或密码里有冒号、@ 等字符时，只能用 URL 写法并做百分号编码。
+func proxyImportURL(entry string) string {
+	if strings.Contains(entry, "://") {
+		return entry
+	}
+	if strings.Contains(entry, "@") {
+		return "http://" + entry
+	}
+	parts := strings.Split(entry, ":")
+	switch len(parts) {
+	case 2:
+		return "http://" + entry
+	case 4:
+		if parts[2] == "" || parts[3] == "" {
+			return entry
+		}
+		endpoint := url.URL{Scheme: "http", User: url.UserPassword(parts[2], parts[3]), Host: net.JoinHostPort(parts[0], parts[1])}
+		return endpoint.String()
+	default:
+		return entry
+	}
 }
 
 func validateProxyTestURL(value string) (string, error) {

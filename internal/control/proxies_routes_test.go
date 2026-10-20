@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -18,6 +20,7 @@ import (
 	"gpt-load/internal/channel"
 	"gpt-load/internal/outboundproxy"
 	"gpt-load/internal/platform/config"
+	app_errors "gpt-load/internal/platform/errors"
 	"gpt-load/internal/platform/i18n"
 	"gpt-load/internal/storage/models"
 )
@@ -304,6 +307,57 @@ func TestProxyImportDistinguishesAuthenticationAndNames(t *testing.T) {
 		if strings.Contains(item.DisplayURL, "first") || strings.Contains(item.DisplayURL, "second") {
 			t.Fatal("proxy list exposed authentication")
 		}
+	}
+}
+
+// 供应商常给 host:port:user:pass，常常一行贴好几条；没写协议的按 HTTP 代理导入。
+func TestProxyImportAcceptsProviderColonFormat(t *testing.T) {
+	fixture := newServiceFixture(t)
+	input := strings.Join([]string{
+		"198.51.100.7:5782:alice:pw-one 203.0.113.9:5782:bob:pw-two",
+		"192.0.2.1:3128",
+		"carol:pw-three@192.0.2.2:8080",
+		"socks5://dave:pw-four@192.0.2.3:1080",
+		"192.0.2.4:5782:erin 192.0.2.5:0:frank:pw-five",
+		"198.51.100.7:5782:alice:pw-one",
+	}, "\n")
+	result, err := fixture.service.ImportProxies(t.Context(), input)
+	if err != nil || result.Imported != 5 || result.Duplicates != 1 || !slices.Equal(result.InvalidLines, []int{5}) {
+		t.Fatalf("import result: %+v, %v", result, err)
+	}
+	list, err := fixture.service.ListProxies(t.Context(), ProxyListQuery{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, item := range list.Items {
+		revealed, err := fixture.service.RevealProxy(t.Context(), item.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, revealed.URL)
+	}
+	slices.Sort(got)
+	want := []string{
+		"http://192.0.2.1:3128",
+		"http://alice:pw-one@198.51.100.7:5782",
+		"http://bob:pw-two@203.0.113.9:5782",
+		"http://carol:pw-three@192.0.2.2:8080",
+		"socks5://dave:pw-four@192.0.2.3:1080",
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("imported URLs = %v, want %v", got, want)
+	}
+}
+
+func TestProxyImportLimitsEntriesNotJustLines(t *testing.T) {
+	fixture := newServiceFixture(t)
+	entries := make([]string, maxProxyImportEntries+1)
+	for index := range entries {
+		entries[index] = fmt.Sprintf("192.0.2.%d:%d", index%250+1, 1000+index)
+	}
+	if _, err := fixture.service.ImportProxies(t.Context(), strings.Join(entries, " ")); !errors.Is(err, app_errors.ErrValidation) {
+		t.Fatalf("import of %d entries on one line: err=%v, want validation error", len(entries), err)
 	}
 }
 

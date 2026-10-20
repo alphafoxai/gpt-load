@@ -38,7 +38,8 @@ export const zhCN = {
   retryFailed: '重测失败项',
   stop: '取消测试',
   import: '批量导入',
-  importHelp: '每行一个 HTTP 或 SOCKS5 代理地址，重复项会跳过。',
+  importHelp:
+    "每行一个或多个代理，用空格分隔。支持 http:// 或 socks5:// 地址，以及 IP:端口:用户名:密码、用户名:密码{'@'}IP:端口、IP:端口（不写协议的按 HTTP 导入）。重复项会跳过。",
   importResult: '已导入 {imported} 个，跳过重复 {duplicates} 个，无效行：{lines}',
   noInvalid: '无',
   testURL: '测试地址',
@@ -121,7 +122,8 @@ export const enUS: Record<keyof typeof zhCN, string> = {
   retryFailed: 'Retry failed',
   stop: 'Cancel tests',
   import: 'Import proxies',
-  importHelp: 'One HTTP or SOCKS5 URL per line. Duplicates are skipped.',
+  importHelp:
+    "One or more proxies per line, separated by spaces. Accepts http:// or socks5:// URLs, plus host:port:user:pass, user:pass{'@'}host:port and host:port (imported as HTTP when no scheme is given). Duplicates are skipped.",
   importResult: 'Imported {imported}, skipped {duplicates} duplicates. Invalid lines: {lines}',
   noInvalid: 'None',
   testURL: 'Test URL',
@@ -210,7 +212,8 @@ export const jaJP: Record<keyof typeof zhCN, string> = {
   retryFailed: '失敗した項目を再試行',
   stop: 'テスト中止',
   import: '一括インポート',
-  importHelp: 'HTTP または SOCKS5 の URL を1行ずつ入力。重複はスキップします。',
+  importHelp:
+    "1行に1つ以上、空白区切りで入力。http:// または socks5:// の URL、ホスト:ポート:ユーザー:パスワード、ユーザー:パスワード{'@'}ホスト:ポート、ホスト:ポートに対応（スキームなしは HTTP として追加）。重複はスキップします。",
   importResult: '{imported} 件を追加、重複 {duplicates} 件をスキップ。無効な行：{lines}',
   noInvalid: 'なし',
   testURL: 'テスト URL',
