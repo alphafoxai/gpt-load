@@ -66,6 +66,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   'update:selected': [selected: boolean]
   toggle: [item: CredentialItemDto]
+  suspension: [item: CredentialItemDto]
   restore: [item: CredentialItemDto]
   refresh: [item: CredentialItemDto]
   'load-details': [item: CredentialItemDto]
@@ -436,8 +437,11 @@ type UnifiedStatus =
   | 'needs_reauth'
   | 'outcome_unknown'
   | 'disabled'
+  | 'suspended'
 
 const unifiedStatus = computed<UnifiedStatus>(() => {
+  if (props.item.configured_status === 'suspended' || props.item.effective_status === 'suspended')
+    return 'suspended'
   if (props.item.configured_status === 'disabled') return 'disabled'
   if (props.item.auth_state === 'refreshing') return 'refreshing'
   if (props.item.auth_state === 'reauthorization_required') return 'needs_reauth'
@@ -456,11 +460,14 @@ const statusTone = computed<'success' | 'warning' | 'danger' | 'neutral'>(() => 
     needs_reauth: 'danger',
     outcome_unknown: 'danger',
     disabled: 'neutral',
+    suspended: 'danger',
   }
   return tones[unifiedStatus.value]
 })
 const statusLabel = computed(() =>
-  t(`group.credentials.subscription.status.${unifiedStatus.value}`),
+  unifiedStatus.value === 'suspended'
+    ? t('accountCapacity.suspended')
+    : t(`group.credentials.subscription.status.${unifiedStatus.value}`),
 )
 const displayDisabled = computed(() => unifiedStatus.value === 'disabled')
 const authErrorKeys: Readonly<Record<string, string>> = {
@@ -484,7 +491,12 @@ const authIssue = computed(() => {
   return key ? t(key) : t(`group.credentials.subscription.auth.${props.item.auth_state}`)
 })
 // 额度同步需要可用的 access token；凭据刷新本身是异常账号的恢复入口，不受此限制。
-const observationRefreshBlocked = computed(() => props.item.auth_state !== 'ready')
+const observationRefreshBlocked = computed(
+  () =>
+    props.item.configured_status !== 'active' ||
+    props.item.effective_status === 'suspended' ||
+    props.item.auth_state !== 'ready',
+)
 const dailyUsage = computed(() => props.item.daily_usage)
 const dailyIncompleteHint = computed(() =>
   dailyUsage.value && !dailyUsage.value.data_complete
@@ -614,10 +626,13 @@ function retryDetails(): void {
 }
 
 function runMenuAction(
-  action: 'download' | 'refresh-credential' | 'toggle' | 'restore' | 'remove',
+  action: 'download' | 'refresh-credential' | 'toggle' | 'restore' | 'remove' | 'suspension',
 ): void {
   menuOpen.value = false
   switch (action) {
+    case 'suspension':
+      emit('suspension', props.item)
+      return
     case 'download':
       emit('download', props.item)
       return
@@ -853,14 +868,18 @@ function runMenuAction(
                 </button>
                 <button
                   type="button"
-                  :disabled="busy || item.configured_status === 'disabled'"
+                  :disabled="busy || item.configured_status !== 'active'"
                   @click="runMenuAction('refresh-credential')"
                 >
                   <KeyRound :size="15" aria-hidden="true" />{{
                     t('group.credentials.subscription.refreshCredential')
                   }}
                 </button>
-                <button type="button" :disabled="busy" @click="runMenuAction('toggle')">
+                <button
+                  type="button"
+                  :disabled="busy || item.configured_status === 'suspended'"
+                  @click="runMenuAction('toggle')"
+                >
                   <CircleOff
                     v-if="item.configured_status === 'active'"
                     :size="15"
@@ -874,7 +893,21 @@ function runMenuAction(
                   }}
                 </button>
                 <button
-                  v-if="isProblem"
+                  type="button"
+                  :disabled="busy"
+                  :title="t('accountCapacity.suspensionHelp')"
+                  @click="runMenuAction('suspension')"
+                >
+                  {{
+                    t(
+                      item.configured_status === 'suspended'
+                        ? 'accountCapacity.clearSuspension'
+                        : 'accountCapacity.markSuspended',
+                    )
+                  }}
+                </button>
+                <button
+                  v-if="isProblem && item.configured_status !== 'suspended'"
                   type="button"
                   :disabled="busy"
                   @click="runMenuAction('restore')"
@@ -905,6 +938,9 @@ function runMenuAction(
           />
         </div>
       </header>
+      <p v-if="unifiedStatus === 'suspended'" class="subscription-account__alert">
+        {{ t('accountCapacity.suspensionHelp') }}
+      </p>
 
       <div v-if="authIssue" class="subscription-account__alert">
         <span>{{ authIssue }}</span>
@@ -1053,7 +1089,11 @@ function runMenuAction(
             class="subscription-account__credits-action"
             variant="ghost"
             size="compact"
-            :disabled="busy"
+            :disabled="
+              busy ||
+              item.configured_status === 'suspended' ||
+              item.effective_status === 'suspended'
+            "
             :aria-label="t('group.credentials.subscription.resetCreditsActionTooltip')"
             @click="emit('reset', item)"
           >

@@ -41,9 +41,13 @@ const (
 	CredentialRuntimeDisabled    CredentialRuntimeState = "disabled"
 	CredentialRuntimeBlacklisted CredentialRuntimeState = "blacklisted"
 	CredentialRuntimeCooldown    CredentialRuntimeState = "cooldown"
+	CredentialRuntimeSuspended   CredentialRuntimeState = "suspended"
 )
 
 func (view CredentialRuntimeView) RuntimeState(now time.Time) CredentialRuntimeState {
+	if view.Status == CredentialStatusSuspended {
+		return CredentialRuntimeSuspended
+	}
 	if view.Status != CredentialStatusActive {
 		return CredentialRuntimeDisabled
 	}

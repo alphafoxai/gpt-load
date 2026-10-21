@@ -1,3 +1,4 @@
+import { readQuotaBudget, type QuotaBudget } from '@shared/quota-budget'
 import { codexLiveModes, type CodexLiveMode } from '@shared/codex-live'
 import { readErrorRules, type ErrorRule } from '@shared/error-rules'
 import { readRedactionRules, type RedactionRule } from './request-redaction'
@@ -22,6 +23,8 @@ export const settingNumbers = {
   global_concurrency_limit: { min: 0, max: Number.MAX_SAFE_INTEGER, unit: 'times' },
   default_access_key_concurrency_limit: { min: 0, max: Number.MAX_SAFE_INTEGER, unit: 'times' },
   default_group_concurrency_limit: { min: 0, max: Number.MAX_SAFE_INTEGER, unit: 'times' },
+  credential_concurrency_limit: { min: 0, max: Number.MAX_SAFE_INTEGER, unit: 'times' },
+  credential_rpm_limit: { min: 0, max: Number.MAX_SAFE_INTEGER, unit: 'times' },
   first_byte_timeout: { min: 1, max: 9_223_372_036, unit: 'seconds' },
   request_timeout: { min: 1, max: 9_223_372_036, unit: 'seconds' },
   stream_idle_timeout: { min: 1, max: 9_223_372_036, unit: 'seconds' },
@@ -65,6 +68,7 @@ export type SettingsValues = Record<SettingNumber, number> &
   Record<SettingSwitch, boolean> & {
     codex_live_mode: CodexLiveMode
     route_strategy: RouteStrategy
+    quota_budget: QuotaBudget
     header_rules: HeaderRules
     response_header_rules: HeaderRules
     cors: CORSConfig
@@ -85,6 +89,7 @@ export const settingKeys: readonly SettingKey[] = [
   'header_rules',
   'response_header_rules',
   'cors',
+  'quota_budget',
   'proxy_config',
   'auto_model',
   'jev',
@@ -180,6 +185,7 @@ function readSettings(value: unknown): SettingsData {
       header_rules: readHeaders(values.header_rules),
       response_header_rules: readHeaders(values.response_header_rules),
       cors: readCORS(values.cors),
+      quota_budget: readQuotaBudget(values.quota_budget),
       proxy_config: readProxy(values.proxy_config),
       auto_model: readAutoModel(values.auto_model),
       jev: readJev(values.jev),

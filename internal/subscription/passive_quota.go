@@ -111,6 +111,15 @@ func (manager *CredentialManager) recordPassiveQuotaObservation(
 	if manager == nil || manager.passiveQuota == nil || manager.registry == nil || credentialID == 0 || (len(windows) == 0 && credits == nil) {
 		return
 	}
+	if manager.registry.CredentialAvailability(credentialID, manager.now()).Suspended {
+		return
+	}
+	if ref, ok := manager.registry.CredentialRef(credentialID); ok && ref.IdentityGeneration == identityGeneration {
+		if preceding != nil {
+			manager.publishPassiveQuotaBudget(ref, preceding.ObservedAtMS, preceding.Windows)
+		}
+		manager.publishPassiveQuotaBudget(ref, observedAtMS, windows)
+	}
 	manager.passiveQuota.record(credentialID, identityGeneration, observedAtMS, windows, preceding, func() (uint, bool) {
 		// 在短内存锁内核对当前身份；不等待后台持有的数据库 mutation 锁。
 		ref, ok := manager.registry.CredentialRef(credentialID)
@@ -277,6 +286,7 @@ func cloneQuotaWindows(windows []providerobservation.QuotaWindow) []providerobse
 		window.Remaining = cloneFloat(window.Remaining)
 		window.Utilization = cloneFloat(window.Utilization)
 		window.ResetAtMS = cloneInt64(window.ResetAtMS)
+		window.ObservedAtMS = cloneInt64(window.ObservedAtMS)
 		window.WindowSeconds = cloneInt64(window.WindowSeconds)
 		window.ModelIDs = append([]string(nil), window.ModelIDs...)
 		cloned = append(cloned, window)

@@ -182,6 +182,10 @@ func mapCredentialRuntimeItem(
 			"map credential %d unknown status: %w", credentialID, app_errors.ErrInternalServer,
 		)
 	}
+	if view.Status == state.CredentialStatusSuspended {
+		item.EffectiveStatus = string(state.CredentialStatusSuspended)
+		item.Recovery = CredentialRecoveryResponse{Mode: "suspended"}
+	}
 	return item, nil
 }
 

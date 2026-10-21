@@ -41,6 +41,9 @@ func (s *Service) RefreshGroupCredential(
 	if err != nil {
 		return CredentialItemResponse{}, err
 	}
+	if err := s.rejectSuspendedCredential(ctx, groupID, credentialID); err != nil {
+		return CredentialItemResponse{}, err
+	}
 	if s.prepareSubscriptionCredential == nil || s.recoverSubscriptionCredential == nil {
 		return CredentialItemResponse{}, app_errors.ErrAuthorizationUnavailable
 	}
@@ -195,6 +198,20 @@ func (s *Service) loadSubscriptionCredentialTarget(
 		return group, credential, app_errors.ParseDBError(err)
 	}
 	return group, credential, nil
+}
+
+func (s *Service) rejectSuspendedCredential(ctx context.Context, groupID, credentialID uint) error {
+	var row models.Credential
+	if err := s.db.WithContext(ctx).Select("status").Where("id = ? AND group_id = ?", credentialID, groupID).Take(&row).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return credentialNotFoundError()
+		}
+		return app_errors.ParseDBError(err)
+	}
+	if row.Status == models.CredentialStatusSuspended {
+		return app_errors.ErrCredentialSuspended
+	}
+	return nil
 }
 
 func subscriptionCredentialFilename(channelID, email string, credentialID uint) string {

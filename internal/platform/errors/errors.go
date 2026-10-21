@@ -33,6 +33,7 @@ var (
 	ErrResourceNotFound                       = &APIError{HTTPStatus: http.StatusNotFound, Code: "NOT_FOUND", Message: "Resource not found"}
 	ErrGroupInUse                             = &APIError{HTTPStatus: http.StatusConflict, Code: "GROUP_IN_USE", Message: "Group is referenced by access keys"}
 	ErrInvalidCredentialState                 = &APIError{HTTPStatus: http.StatusConflict, Code: "INVALID_CREDENTIAL_STATE", Message: "Credential cannot be restored from its current state"}
+	ErrCredentialSuspended                    = &APIError{HTTPStatus: http.StatusConflict, Code: "CREDENTIAL_SUSPENDED", Message: "Credential is suspended; clear suspension to disabled before enabling it separately"}
 	ErrInternalServer                         = &APIError{HTTPStatus: http.StatusInternalServerError, Code: "INTERNAL_SERVER_ERROR", Message: "An unexpected error occurred"}
 	ErrDatabase                               = &APIError{HTTPStatus: http.StatusInternalServerError, Code: "DATABASE_ERROR", Message: "Database operation failed"}
 	ErrUnauthorized                           = &APIError{HTTPStatus: http.StatusUnauthorized, Code: "UNAUTHORIZED", Message: "Authentication failed"}

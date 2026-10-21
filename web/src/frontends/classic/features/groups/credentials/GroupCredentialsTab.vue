@@ -217,7 +217,10 @@ const selectedCount = computed(() => selectedIds.value.size)
 const selectedSubscriptionCredentialsReady = computed(() =>
   (collection.value?.items ?? [])
     .filter(({ credential_id }) => selectedIds.value.has(credential_id))
-    .every(({ auth_state }) => auth_state === 'ready'),
+    .every(
+      ({ auth_state, configured_status }) =>
+        auth_state === 'ready' && configured_status !== 'suspended',
+    ),
 )
 const allVisibleSelected = computed(() => {
   const items = collection.value?.items ?? []
@@ -745,6 +748,10 @@ async function cacheObservation(
 
 async function refreshObservation(item: CredentialItemDto): Promise<void> {
   if (pending(item.credential_id) || observationBatchBusy.value) return
+  if (item.configured_status === 'suspended') {
+    feedback.value = t('accountCapacity.suspensionBlocked')
+    return
+  }
   feedback.value = ''
   clearObservationError(item.credential_id)
   setPending(item.credential_id, 'observation', true)
@@ -768,6 +775,10 @@ async function refreshObservation(item: CredentialItemDto): Promise<void> {
 
 async function refreshCredentialToken(item: CredentialItemDto): Promise<void> {
   if (pending(item.credential_id)) return
+  if (item.configured_status === 'suspended') {
+    feedback.value = t('accountCapacity.suspensionBlocked')
+    return
+  }
   feedback.value = ''
   setPending(item.credential_id, 'refresh-credential', true)
   try {
@@ -984,7 +995,10 @@ async function syncSelectedObservations(): Promise<void> {
   )
   if (
     items.length === 0 ||
-    items.some(({ auth_state }) => auth_state !== 'ready') ||
+    items.some(
+      ({ auth_state, configured_status }) =>
+        auth_state !== 'ready' || configured_status === 'suspended',
+    ) ||
     bulkActionsBusy.value ||
     !channelCapabilities.value.quota_observation
   ) {
@@ -1115,6 +1129,10 @@ async function loadCredentialUsage(item: CredentialItemDto): Promise<void> {
 
 function openResetCreditDialog(item: CredentialItemDto): void {
   if (pending(item.credential_id)) return
+  if (item.configured_status === 'suspended') {
+    feedback.value = t('accountCapacity.suspensionBlocked')
+    return
+  }
   const idempotencyKey = resetOperationKeys.get(item.credential_id) ?? createUUID()
   resetOperationKeys.set(item.credential_id, idempotencyKey)
   resetTarget.value = { item, idempotencyKey }
@@ -1411,10 +1429,14 @@ function clearDeletedRouteState(ids: readonly number[]): void {
 
 async function mutateItem(
   item: CredentialItemDto,
-  action: 'weight' | 'toggle' | 'restore',
+  action: 'weight' | 'toggle' | 'restore' | 'suspension',
   value?: string,
 ): Promise<void> {
   if (batchBusy.value || pending(item.credential_id)) return
+  if (item.configured_status === 'suspended' && (action === 'toggle' || action === 'restore')) {
+    feedback.value = t('accountCapacity.suspensionBlocked')
+    return
+  }
   feedback.value = ''
   setPending(item.credential_id, action, true)
   let result: CredentialItemDto
@@ -1428,11 +1450,17 @@ async function mutateItem(
             item.credential_id,
             action === 'weight'
               ? { weight_manual: Number(value) }
-              : { status: item.configured_status === 'active' ? 'disabled' : 'active' },
+              : action === 'suspension'
+                ? { status: item.configured_status === 'suspended' ? 'disabled' : 'suspended' }
+                : { status: item.configured_status === 'active' ? 'disabled' : 'active' },
           )
   } catch {
     feedback.value = t(
-      action === 'restore' ? 'group.credentials.restoreFailed' : 'group.credentials.updateFailed',
+      action === 'suspension'
+        ? 'accountCapacity.suspensionFailed'
+        : action === 'restore'
+          ? 'group.credentials.restoreFailed'
+          : 'group.credentials.updateFailed',
     )
     setPending(item.credential_id, action, false)
     return
@@ -1473,6 +1501,10 @@ function setCredentialTestOpen(open: boolean): void {
 
 async function openCredentialTest(item: CredentialItemDto): Promise<void> {
   if (props.connectionType !== 'api_key' || batchBusy.value || pending(item.credential_id)) return
+  if (item.configured_status === 'suspended') {
+    feedback.value = t('accountCapacity.suspensionBlocked')
+    return
+  }
   resetCredentialTestState()
   credentialTestTarget.value = item
   await loadCredentialTestSettings()
@@ -1481,9 +1513,14 @@ async function openCredentialTest(item: CredentialItemDto): Promise<void> {
 async function openBatchCredentialTest(): Promise<void> {
   if (props.connectionType !== 'api_key' || bulkActionsBusy.value) return
   const ids = (collection.value?.items ?? [])
-    .filter((item) => selectedIds.value.has(item.credential_id))
+    .filter(
+      (item) => selectedIds.value.has(item.credential_id) && item.configured_status !== 'suspended',
+    )
     .map((item) => item.credential_id)
-  if (!ids.length) return
+  if (!ids.length) {
+    feedback.value = t('accountCapacity.suspensionBlocked')
+    return
+  }
   resetCredentialTestState()
   credentialBatchTargets.value = ids
   await loadCredentialTestSettings()
@@ -2127,6 +2164,7 @@ async function runBatch(
               :save-name="(value) => saveCredentialName(item, value)"
               @update:selected="setSelected(item.credential_id, $event)"
               @toggle="mutateItem($event, 'toggle')"
+              @suspension="mutateItem($event, 'suspension')"
               @restore="mutateItem($event, 'restore')"
               @weight="mutateItem($event.item, 'weight', $event.value)"
               @refresh="refreshObservation"
@@ -2181,6 +2219,7 @@ async function runBatch(
             @weight="mutateItem($event.item, 'weight', $event.value)"
             @test="openCredentialTest"
             @toggle="mutateItem($event, 'toggle')"
+            @suspension="mutateItem($event, 'suspension')"
             @restore="mutateItem($event, 'restore')"
             @remove="deleteTarget = { ids: [$event.credential_id], mask: $event.label }"
           />

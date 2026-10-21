@@ -661,7 +661,7 @@ func validateCompileInput(input CompileInput) error {
 			return fmt.Errorf("credential %d belongs to unknown group %d", credential.ID, credential.GroupID)
 		}
 		switch credential.Status {
-		case CredentialStatusActive, CredentialStatusDisabled:
+		case CredentialStatusActive, CredentialStatusDisabled, CredentialStatusSuspended:
 		default:
 			return fmt.Errorf("credential %d has invalid status %q", credential.ID, credential.Status)
 		}

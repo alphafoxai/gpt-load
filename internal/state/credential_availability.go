@@ -7,6 +7,7 @@ import "time"
 type CredentialAvailability struct {
 	Exists        bool
 	Disabled      bool
+	Suspended     bool
 	AuthPending   bool
 	Blacklisted   bool
 	Cooldown      bool
@@ -25,6 +26,7 @@ func (r *CredentialRegistry) CredentialAvailability(credentialID uint, now time.
 	availability := CredentialAvailability{
 		Exists:        true,
 		Disabled:      entry.Status != CredentialStatusActive,
+		Suspended:     entry.Status == CredentialStatusSuspended,
 		AuthPending:   entry.AuthState.normalize() != CredentialAuthStateReady,
 		Blacklisted:   entry.Blacklisted,
 		Cooldown:      entry.CooldownUntil.After(now),

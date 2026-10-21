@@ -4,6 +4,8 @@ import type { CredentialQuota } from '@modern/api/credential-observation'
 import type { SemanticTone } from '@modern/components/ui'
 
 export function credentialStatus(row: CredentialRow): { key: string; tone: SemanticTone } {
+  if (row.configuredStatus === 'suspended' || row.state === 'suspended')
+    return { key: 'accountCapacity.suspended', tone: 'danger' }
   if (!row.enabled) return { key: 'groups.credentials.disabled', tone: 'neutral' }
   if (row.authState !== 'ready')
     return {
@@ -15,6 +17,7 @@ export function credentialStatus(row: CredentialRow): { key: string; tone: Seman
     cooldown: 'warning',
     blacklisted: 'danger',
     disabled: 'neutral',
+    suspended: 'danger',
   }
   return { key: 'groups.credentials.' + row.state, tone: tones[row.state] }
 }

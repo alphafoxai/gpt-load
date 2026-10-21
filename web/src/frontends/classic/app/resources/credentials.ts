@@ -154,9 +154,9 @@ const inconclusiveCredentialTestReasons = [
   'probe_incompatible',
   'unknown',
 ] as const
-const configuredStatuses = ['active', 'disabled'] as const
-const effectiveStatuses = ['available', 'cooldown', 'blacklisted', 'disabled'] as const
-const recoveryModes = ['none', 'cooldown', 'probe', 'manual'] as const
+const configuredStatuses = ['active', 'disabled', 'suspended'] as const
+const effectiveStatuses = ['available', 'cooldown', 'blacklisted', 'disabled', 'suspended'] as const
+const recoveryModes = ['none', 'cooldown', 'probe', 'manual', 'suspended'] as const
 const failureCategories = [
   'ok',
   'rate_limited',
@@ -228,6 +228,7 @@ const quotaWindowFields = [
   'limit',
   'remaining',
   'utilization',
+  'observed_at_ms',
   'reset_at_ms',
   'window_seconds',
   'model_ids',
@@ -392,6 +393,9 @@ function projectQuotaWindow(value: unknown): CredentialQuotaWindowDto {
     ...(limit === undefined ? {} : { limit }),
     ...(remaining === undefined ? {} : { remaining }),
     ...(utilization === undefined ? {} : { utilization }),
+    ...(record.observed_at_ms === undefined
+      ? {}
+      : { observed_at_ms: projectEpochMilliseconds(record.observed_at_ms) }),
     ...(record.reset_at_ms === undefined
       ? {}
       : { reset_at_ms: projectEpochMilliseconds(record.reset_at_ms) }),
@@ -565,6 +569,7 @@ function projectRecovery(value: unknown): CredentialRecoveryDto {
     (result.mode === 'cooldown' && (!result.automatic || result.at_ms === null)) ||
     (result.mode === 'probe' && !result.automatic) ||
     (result.mode === 'manual' && result.automatic) ||
+    (result.mode === 'suspended' && (result.automatic || result.at_ms !== null)) ||
     (result.mode === 'none' && (result.automatic || result.at_ms !== null))
   ) {
     invalidResponse()
@@ -584,7 +589,9 @@ export function projectCredentialItem(value: unknown): CredentialItemDto {
   if (
     // 分组停用或权重为 0 时，active 凭据的运行时状态也会是 disabled。
     (configuredStatus === 'disabled' && effectiveStatus !== 'disabled') ||
-    (weight === 0 && effectiveStatus !== 'disabled') ||
+    (configuredStatus === 'suspended') !== (effectiveStatus === 'suspended') ||
+    (recovery.mode === 'suspended') !== (effectiveStatus === 'suspended') ||
+    (weight === 0 && effectiveStatus !== 'disabled' && effectiveStatus !== 'suspended') ||
     (effectiveStatus === 'cooldown') !== (cooldownUntil !== null) ||
     (recovery.mode === 'cooldown') !== (effectiveStatus === 'cooldown')
   ) {
@@ -1097,7 +1104,7 @@ export async function batchCredentials(
   )
   if (
     new Set(affectedCredentialIDs).size !== affectedCredentialIDs.length ||
-    (!all && affectedCredentialIDs.length !== ids.length)
+    (!all && affectedCredentialIDs.some((id) => !ids.includes(id)))
   )
     invalidResponse()
   return {
@@ -1127,7 +1134,13 @@ function queryFilters(queryKey: QueryKey): CredentialCollectionFilters | undefin
 }
 
 function matchesFilters(item: CredentialItemDto, filters: CredentialCollectionFilters): boolean {
-  if (filters.status !== undefined && item.effective_status !== filters.status) return false
+  if (
+    filters.status !== undefined &&
+    (filters.status === 'disabled'
+      ? !['disabled', 'suspended'].includes(item.effective_status)
+      : item.effective_status !== filters.status)
+  )
+    return false
   if (filters.q === undefined) return true
   const query = filters.q.toLowerCase()
   return (
@@ -1143,8 +1156,9 @@ function withSummaryDelta(
   next: CredentialItemDto | undefined,
 ): CredentialSummaryDto {
   const result = { ...summary }
-  result[previous.effective_status]--
-  if (next !== undefined) result[next.effective_status]++
+  result[previous.effective_status === 'suspended' ? 'disabled' : previous.effective_status]--
+  if (next !== undefined)
+    result[next.effective_status === 'suspended' ? 'disabled' : next.effective_status]++
   return result
 }
 
@@ -1194,7 +1208,8 @@ function totalItemsAfterBatchDelete(
   summary: CredentialSummaryDto,
 ): number {
   const { q, status } = pages[0].filters
-  if (q === undefined) return status === undefined ? summary.total : summary[status]
+  if (q === undefined && status !== 'suspended')
+    return status === undefined ? summary.total : summary[status]
   return Math.max(
     0,
     Math.max(...pages.map(({ collection }) => collection.pagination.total_items)) -

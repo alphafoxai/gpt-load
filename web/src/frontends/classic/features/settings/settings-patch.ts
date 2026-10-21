@@ -1,3 +1,4 @@
+import { validQuotaBudget, type QuotaBudget } from '@shared/quota-budget'
 import type { CodexLiveMode } from '@shared/codex-live'
 import { cloneErrorRules, validErrorRules, type ErrorRule } from '@shared/error-rules'
 import type { RedactionRule } from '@/app/resources/request-redaction'
@@ -36,6 +37,9 @@ const requestForwardingKeys: RuntimeSettingKey[] = [
   'global_concurrency_limit',
   'default_access_key_concurrency_limit',
   'default_group_concurrency_limit',
+  'credential_concurrency_limit',
+  'credential_rpm_limit',
+  'quota_budget',
   'codex_live_mode',
   'responses_websocket_enabled',
   'route_strategy',
@@ -71,6 +75,7 @@ function cloneValues(value: SettingsValues): SettingsValues {
   return {
     ...value,
     error_rules: cloneErrorRules(value.error_rules),
+    quota_budget: { ...value.quota_budget },
     jev: { ...value.jev },
     request_redaction: value.request_redaction.map((rule) => ({ ...rule })),
     request_audit: JSON.parse(JSON.stringify(value.request_audit)) as AuditConfig,
@@ -122,6 +127,8 @@ export function setSettingsOverride(
       next.values.empty_response_retry = base.values.empty_response_retry
     } else if (key === 'models_dev_auto_sync_enabled') {
       next.values.models_dev_auto_sync_enabled = base.values.models_dev_auto_sync_enabled
+    } else if (key === 'quota_budget') {
+      next.values.quota_budget = { ...base.values.quota_budget }
     } else if (key === 'cors') {
       next.values.cors = cloneCORSConfig(base.values.cors)
     } else if (key === 'jev') {
@@ -182,6 +189,7 @@ function normalizedWireValue(
   | CodexLiveMode
   | HeaderRulesDto
   | CORSConfigDto
+  | QuotaBudget
   | AutoModelConfigDto
   | JevConfig
   | AuditConfig
@@ -226,6 +234,7 @@ function normalizedIdentityValue(
   | CodexLiveMode
   | HeaderRulesDto
   | CORSConfigDto
+  | QuotaBudget
   | AutoModelConfigDto
   | JevConfig
   | AuditConfig
@@ -418,8 +427,11 @@ export function validateSettingsSection(draft: SettingsDraft, section: SettingsS
     'global_concurrency_limit',
     'default_access_key_concurrency_limit',
     'default_group_concurrency_limit',
+    'credential_concurrency_limit',
+    'credential_rpm_limit',
   ]
   return (
+    (!draft.overrides.has('quota_budget') || validQuotaBudget(draft.values.quota_budget)) &&
     (!draft.overrides.has('error_rules') || validErrorRules(draft.values.error_rules)) &&
     timeouts.every((key) => !draft.overrides.has(key) || isValidTimeout(draft.values[key])) &&
     policyCounts.every(

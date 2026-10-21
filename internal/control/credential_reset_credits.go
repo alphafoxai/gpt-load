@@ -62,6 +62,9 @@ func (s *Service) ConsumeCredentialResetCredit(
 	if err != nil {
 		return ResetCreditConsumeResponse{}, err
 	}
+	if err := s.rejectSuspendedCredential(ctx, groupID, credentialID); err != nil {
+		return ResetCreditConsumeResponse{}, err
+	}
 	network, err := s.credentialNetworkContext(ctx, s.db, group, credential)
 	if err != nil {
 		return ResetCreditConsumeResponse{}, err
@@ -125,6 +128,11 @@ func (s *Service) ConsumeCredentialResetCredit(
 			return ResetCreditConsumeResponse{}, app_errors.ErrResetCreditOutcomeUnknown
 		}
 		return ResetCreditConsumeResponse{}, apiErr
+	}
+	if err := s.rejectSuspendedCredential(callContext, groupID, credentialID); err != nil {
+		cancel()
+		_ = s.finishResetCreditOperation(operation, models.CredentialResetOperationRejected, nil, app_errors.ErrCredentialSuspended.Code)
+		return ResetCreditConsumeResponse{}, err
 	}
 	upstream, consumeErr := s.consumeSubscriptionResetCredit(callContext, channelID, preparedCredential, target, request)
 	cancel()
@@ -203,6 +211,7 @@ func (s *Service) invalidateCredentialObservationAfterReset(
 ) (*CredentialObservationResponse, error) {
 	if s.registry != nil {
 		s.registry.SetCredentialQuotaObservation(credential.ID, nil, time.Time{})
+		s.registry.InvalidateQuotaBudget(credential.ID, s.now())
 	}
 	if previous == nil || previous.CredentialID == 0 || previous.IdentityFingerprint != credential.IdentityFingerprint {
 		return nil, nil
@@ -481,6 +490,9 @@ func (s *Service) prepareResetCreditRequest(
 	credential subscriptionruntime.Credential,
 	target subscriptionruntime.Target,
 ) (subscriptionruntime.ResetCreditRequest, error) {
+	if err := s.rejectSuspendedCredential(ctx, operation.GroupID, operation.CredentialID); err != nil {
+		return subscriptionruntime.ResetCreditRequest{}, err
+	}
 	request := subscriptionruntime.ResetCreditRequest{ID: operation.RedeemRequestID}
 	if len(operation.ResultJSON) > 0 {
 		var stored storedResetCreditRequest
@@ -520,6 +532,9 @@ func (s *Service) prepareResetCreditRequest(
 }
 
 func classifyResetCreditPreparationError(err error) *app_errors.APIError {
+	if errors.Is(err, app_errors.ErrCredentialSuspended) {
+		return app_errors.ErrCredentialSuspended
+	}
 	var upstream *subscriptionruntime.UpstreamHTTPError
 	if errors.As(err, &upstream) {
 		switch upstream.StatusCode {
@@ -549,6 +564,8 @@ func classifyResetCreditConsumeError(err error) (models.CredentialResetOperation
 
 func resetCreditErrorByCode(code string) *app_errors.APIError {
 	switch code {
+	case app_errors.ErrCredentialSuspended.Code:
+		return app_errors.ErrCredentialSuspended
 	case app_errors.ErrResetCreditPreparationFailed.Code:
 		return app_errors.ErrResetCreditPreparationFailed
 	case app_errors.ErrCredentialReauthorizationRequired.Code:

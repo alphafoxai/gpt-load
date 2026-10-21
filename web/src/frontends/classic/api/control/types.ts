@@ -178,9 +178,9 @@ export interface GroupModelsDto {
   pending: number
 }
 
-export type CredentialStatus = 'available' | 'cooldown' | 'blacklisted' | 'disabled'
-export type CredentialConfiguredStatus = 'active' | 'disabled'
-export type CredentialRecoveryMode = 'none' | 'cooldown' | 'probe' | 'manual'
+export type CredentialStatus = 'available' | 'cooldown' | 'blacklisted' | 'disabled' | 'suspended'
+export type CredentialConfiguredStatus = 'active' | 'disabled' | 'suspended'
+export type CredentialRecoveryMode = 'none' | 'cooldown' | 'probe' | 'manual' | 'suspended'
 export type CredentialAuthState =
   'ready' | 'refreshing' | 'reauthorization_required' | 'outcome_unknown'
 export type CredentialObservationState = 'fresh' | 'stale' | 'refreshing' | 'error' | 'unavailable'
@@ -203,6 +203,7 @@ export interface CredentialQuotaWindowDto {
   limit?: number
   remaining?: number
   utilization?: number
+  observed_at_ms?: number
   reset_at_ms?: number
   window_seconds?: number
   model_ids?: string[]

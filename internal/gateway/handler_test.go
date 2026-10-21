@@ -1986,6 +1986,10 @@ func (panicRuntimeRegistry) ActiveEncryptedCredentialDataIfMatch(state.Credentia
 	panic("model endpoint matched an upstream key")
 }
 
+func (panicRuntimeRegistry) CheckQuotaBudget(state.CredentialRef, state.QuotaBudgetConfig, time.Time) state.QuotaBudgetDecision {
+	panic("model endpoint checked credential quota")
+}
+
 func (panicRuntimeRegistry) SetCooldown(uint, time.Time) bool {
 	panic("model endpoint set cooldown")
 }

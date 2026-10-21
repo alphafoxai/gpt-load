@@ -197,7 +197,7 @@ func TestCredentialQuotaHistoryReturnsOnlyPointsWithinRange(t *testing.T) {
 	}
 }
 
-func TestCredentialQuotaHistoryFiltersStoredShortAndUnknownPeriods(t *testing.T) {
+func TestCredentialQuotaHistoryIncludesFiveHourAndFiltersShorterOrUnknownPeriods(t *testing.T) {
 	initControlI18n(t)
 	fixture := newServiceFixture(t)
 	group := models.Group{Name: "long quota history", ChannelID: "codex", ConnectionType: models.ConnectionTypeSubscription, Params: models.JSON(`{}`), Models: models.JSON(`[]`), Overrides: models.JSON(`{}`)}
@@ -209,7 +209,7 @@ func TestCredentialQuotaHistoryFiltersStoredShortAndUnknownPeriods(t *testing.T)
 		t.Fatal(err)
 	}
 	identity := subscription.QuotaHistoryTargetIdentity(stateloader.CredentialIdentityGeneration(credential.IdentityFingerprint, group.ChannelID, string(group.ConnectionType), json.RawMessage(group.Params)))
-	for _, seconds := range []int64{0, 18_000, 86_399, 86_400, 604_800} {
+	for _, seconds := range []int64{0, 17_999, 18_000, 86_399, 86_400, 604_800} {
 		row := models.CredentialQuotaHistory{GroupID: group.ID, CredentialID: credential.ID, TargetIdentity: identity, WindowKey: fmt.Sprint(seconds), WindowID: "window", Label: "Window", Scope: "account", ObservedAtMS: 60_000, UsedBasisPoints: 1200}
 		if seconds != 0 {
 			row.WindowSeconds = &seconds
@@ -233,7 +233,7 @@ func TestCredentialQuotaHistoryFiltersStoredShortAndUnknownPeriods(t *testing.T)
 	if err := json.Unmarshal(decodeGroupCollectionSuccessData(t, result), &data); err != nil {
 		t.Fatal(err)
 	}
-	if len(data.Windows) != 2 || data.Windows[0].WindowSeconds != 86_400 || data.Windows[1].WindowSeconds != 604_800 {
-		t.Fatalf("old short or unknown periods are visible: %+v", data)
+	if len(data.Windows) != 4 || data.Windows[0].WindowSeconds != 18_000 || data.Windows[1].WindowSeconds != 86_399 || data.Windows[2].WindowSeconds != 86_400 || data.Windows[3].WindowSeconds != 604_800 {
+		t.Fatalf("five-hour history or shorter-period filtering is incorrect: %+v", data)
 	}
 }

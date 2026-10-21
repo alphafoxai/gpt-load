@@ -2,7 +2,7 @@ export type StatusTone = 'success' | 'info' | 'warning' | 'danger' | 'neutral'
 export type StatusIcon = 'check' | 'info' | 'alert' | 'off' | 'progress' | 'help' | 'edit'
 
 export type OperationalStatus =
-  'available' | 'cooldown' | 'blacklisted' | 'disabled' | 'unavailable' | 'unknown'
+  'available' | 'cooldown' | 'blacklisted' | 'disabled' | 'suspended' | 'unavailable' | 'unknown'
 
 export type MutationStatus = 'confirmed' | 'failed' | 'indeterminate' | 'reconciling'
 
@@ -16,6 +16,7 @@ const operationalPresentations: Record<OperationalStatus, StatusPresentation> = 
   cooldown: { tone: 'warning', icon: 'alert' },
   blacklisted: { tone: 'danger', icon: 'off' },
   disabled: { tone: 'neutral', icon: 'off' },
+  suspended: { tone: 'danger', icon: 'off' },
   unavailable: { tone: 'danger', icon: 'off' },
   unknown: { tone: 'neutral', icon: 'help' },
 }

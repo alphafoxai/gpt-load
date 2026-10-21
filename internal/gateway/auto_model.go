@@ -217,6 +217,9 @@ func (handler *Handler) prepareAutoModel(ctx context.Context, snapshot *state.Co
 			if result.Reason == reasonConcurrencyLimit.Code {
 				return parsed, metadata, decision, &reasonConcurrencyLimit
 			}
+			if failure := localCapacityReason(result.Reason); failure != nil {
+				return parsed, metadata, decision, failure
+			}
 			if result.Status == "selected" {
 				for _, preset := range presets {
 					if preset.ID == result.Choice {

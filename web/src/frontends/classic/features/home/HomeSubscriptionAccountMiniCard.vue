@@ -29,6 +29,7 @@ type UnifiedStatus =
   | 'needs_reauth'
   | 'outcome_unknown'
   | 'disabled'
+  | 'suspended'
 type CardTone = 'success' | 'warning' | 'danger' | 'neutral'
 type ResetCreditDotTone = 'default' | 'warning' | 'danger'
 
@@ -91,6 +92,8 @@ const quotaWindows = computed(() => {
 
 const unifiedStatus = computed<UnifiedStatus>(() => {
   const item = credential.value
+  if (item.configured_status === 'suspended' || item.effective_status === 'suspended')
+    return 'suspended'
   if (item.configured_status === 'disabled') return 'disabled'
   if (item.auth_state === 'refreshing') return 'refreshing'
   if (item.auth_state === 'reauthorization_required') return 'needs_reauth'
@@ -114,6 +117,7 @@ const unifiedStatus = computed<UnifiedStatus>(() => {
 const showAggregateAvailability = computed(
   () =>
     props.account.group_count > 1 &&
+    unifiedStatus.value !== 'suspended' &&
     (props.account.available_group_count < props.account.group_count ||
       unifiedStatus.value === 'available'),
 )
@@ -132,6 +136,7 @@ const cardTone = computed<CardTone>(() => {
     needs_reauth: 'danger',
     outcome_unknown: 'danger',
     disabled: 'neutral',
+    suspended: 'danger',
   }
   return tones[unifiedStatus.value]
 })
@@ -142,7 +147,9 @@ const statusLabel = computed(() =>
         available: n(props.account.available_group_count),
         total: n(props.account.group_count),
       })
-    : t(`group.credentials.subscription.status.${unifiedStatus.value}`),
+    : unifiedStatus.value === 'suspended'
+      ? t('accountCapacity.suspended')
+      : t(`group.credentials.subscription.status.${unifiedStatus.value}`),
 )
 
 const displayDisabled = computed(

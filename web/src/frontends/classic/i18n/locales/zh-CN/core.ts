@@ -1,7 +1,9 @@
+import { accountCapacityMessages } from '@shared/account-capacity-messages'
 import { errorRuleMessages } from '@shared/error-rule-messages'
 import { zhCN as mirasimStatus } from '@shared/mirasim-status/messages'
 import { zhCN as proxies } from '@shared/proxies/messages'
 export default {
+  accountCapacity: accountCapacityMessages['zh-CN'],
   errorRules: errorRuleMessages['zh-CN'],
   mirasimStatus,
   proxies,

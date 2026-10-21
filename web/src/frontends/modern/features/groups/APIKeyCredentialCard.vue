@@ -84,6 +84,9 @@ const lastUsedFull = computed(() =>
 )
 const issues = computed(() =>
   [
+    props.row.configuredStatus === 'suspended' || props.row.state === 'suspended'
+      ? t('accountCapacity.suspensionHelp')
+      : '',
     props.row.cooldownUntil
       ? t('groupDetail.recoversAt', { time: credentialTime(props.row.cooldownUntil, locale.value) })
       : '',
@@ -185,7 +188,7 @@ const issues = computed(() =>
           size="xxs"
           :model-value="row.enabled"
           :label="t('groups.edit.enabled')"
-          :disabled="disabled"
+          :disabled="disabled || row.configuredStatus === 'suspended' || row.state === 'suspended'"
           @update:model-value="$emit('toggle', $event)"
         /></div
     ></template>

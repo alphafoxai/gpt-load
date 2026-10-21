@@ -8,6 +8,15 @@ const props = defineProps<{ row: CredentialRow; subscription?: boolean; disabled
 defineEmits<{ action: [value: string] }>()
 const { t } = useI18n()
 const actions = computed(() => [
+  {
+    id: props.row.configuredStatus === 'suspended' ? 'clear-suspension' : 'suspend',
+    label: t(
+      props.row.configuredStatus === 'suspended'
+        ? 'accountCapacity.clearSuspension'
+        : 'accountCapacity.markSuspended',
+    ),
+    icon: KeyRound,
+  },
   ...(props.subscription
     ? [
         {
@@ -19,9 +28,11 @@ const actions = computed(() => [
         { id: 'download', label: t('credentialCards.export'), icon: Download },
       ]
     : []),
-  ...(props.row.state === 'cooldown' ||
-  props.row.state === 'blacklisted' ||
-  props.row.modelCooldowns.length
+  ...(props.row.state !== 'suspended' &&
+  props.row.configuredStatus !== 'suspended' &&
+  (props.row.state === 'cooldown' ||
+    props.row.state === 'blacklisted' ||
+    props.row.modelCooldowns.length)
     ? [{ id: 'restore', label: t('credentialCards.restore'), icon: RotateCcw }]
     : []),
   { id: 'delete', label: t('groupDetail.deleteCredential'), icon: Trash2, danger: true },
@@ -41,7 +52,7 @@ const actions = computed(() => [
       :icon="Stethoscope"
       :label="t('credentialCards.test')"
       size="xxs"
-      :disabled="disabled"
+      :disabled="disabled || row.configuredStatus === 'suspended' || row.state === 'suspended'"
       @click="$emit('action', 'test')"
     />
     <AppActionMenu

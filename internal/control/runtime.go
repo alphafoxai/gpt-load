@@ -172,6 +172,13 @@ func (runtime *Runtime) Run(ctx context.Context) {
 		}()
 	}
 	if runtime.operationRecovery != nil {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			if refresher, ok := runtime.operationRecovery.(interface{ RunQuotaBudgetRefresh(context.Context) }); ok {
+				refresher.RunQuotaBudgetRefresh(ctx)
+			}
+		}()
 		if inspection, ok := runtime.operationRecovery.(interface {
 			RunDegradeInspection(context.Context)
 		}); ok {

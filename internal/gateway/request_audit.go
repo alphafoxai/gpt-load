@@ -85,6 +85,10 @@ func (h *Handler) checkRequestAudit(ctx context.Context, snapshot *state.ConfigS
 			result.Status, result.Reason = "incomplete", call.Reason
 			return &reasonConcurrencyLimit
 		}
+		if failure := localCapacityReason(call.Reason); failure != nil {
+			result.Status, result.Reason = "incomplete", call.Reason
+			return failure
+		}
 		if ctx.Err() != nil {
 			return allowIncomplete("canceled")
 		}

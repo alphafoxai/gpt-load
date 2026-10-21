@@ -72,7 +72,9 @@ export function useSettingsEditor(pendingKeys: () => readonly SettingKey[] = () 
                 ? t('settingsForm.errors.number', { min: n(range.min), max: n(range.max) })
                 : code === 'errorRules'
                   ? t('errorRules.errors.invalid')
-                  : t('settingsForm.errors.' + code),
+                  : key.startsWith('quota_budget.')
+                    ? t('accountCapacity.budgetError')
+                    : t('settingsForm.errors.' + code),
             ]
           }),
         )

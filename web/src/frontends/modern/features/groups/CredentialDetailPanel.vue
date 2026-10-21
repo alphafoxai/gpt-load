@@ -291,7 +291,10 @@ useMessageSource(() =>
           <div>
             <dt>{{ t('credentialCards.recovery') }}</dt>
             <dd>
-              {{ t('credentialCards.recoveryModes.' + item.recovery.mode)
+              {{
+                item.recovery.mode === 'suspended'
+                  ? t('accountCapacity.suspensionHelp')
+                  : t('credentialCards.recoveryModes.' + item.recovery.mode)
               }}<span v-if="item.recovery.at">
                 · {{ credentialTime(item.recovery.at, locale) }}</span
               >

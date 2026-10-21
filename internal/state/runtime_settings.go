@@ -19,6 +19,9 @@ const (
 	SettingGlobalConcurrencyLimit           = "global_concurrency_limit"
 	SettingDefaultAccessKeyConcurrencyLimit = "default_access_key_concurrency_limit"
 	SettingDefaultGroupConcurrencyLimit     = "default_group_concurrency_limit"
+	SettingCredentialConcurrencyLimit       = "credential_concurrency_limit"
+	SettingCredentialRPMLimit               = "credential_rpm_limit"
+	SettingQuotaBudget                      = "quota_budget"
 	SettingConcurrencyLimit                 = "concurrency_limit"
 	SettingFirstByteTimeout                 = "first_byte_timeout"
 	SettingRequestTimeout                   = "request_timeout"
@@ -71,6 +74,9 @@ type RuntimeSettings struct {
 	GlobalConcurrencyLimit           int64
 	DefaultAccessKeyConcurrencyLimit int64
 	DefaultGroupConcurrencyLimit     int64
+	CredentialConcurrencyLimit       int64
+	CredentialRPMLimit               int64
+	QuotaBudget                      QuotaBudgetConfig
 	FirstByteTimeout                 time.Duration
 	RequestTimeout                   time.Duration
 	StreamIdleTimeout                time.Duration
@@ -106,6 +112,7 @@ type ResolvedGroupSettings struct {
 
 func DefaultRuntimeSettings() RuntimeSettings {
 	return RuntimeSettings{
+		QuotaBudget:               DefaultQuotaBudgetConfig(),
 		FirstByteTimeout:          120 * time.Second,
 		RequestTimeout:            600 * time.Second,
 		StreamIdleTimeout:         300 * time.Second,
@@ -130,6 +137,7 @@ func DefaultRuntimeSettings() RuntimeSettings {
 func IsRuntimeSettingKey(key string) bool {
 	switch key {
 	case SettingGlobalConcurrencyLimit, SettingDefaultAccessKeyConcurrencyLimit, SettingDefaultGroupConcurrencyLimit,
+		SettingCredentialConcurrencyLimit, SettingCredentialRPMLimit, SettingQuotaBudget,
 		SettingFirstByteTimeout,
 		SettingRequestTimeout,
 		SettingStreamIdleTimeout,
@@ -160,6 +168,22 @@ func ResolveRuntimeSettings(settings config.Settings) (RuntimeSettings, error) {
 	resolved := DefaultRuntimeSettings()
 	for key, value := range settings {
 		switch key {
+		case SettingQuotaBudget:
+			budget, err := parseQuotaBudgetConfig(value)
+			if err != nil {
+				return RuntimeSettings{}, err
+			}
+			resolved.QuotaBudget = budget
+		case SettingCredentialConcurrencyLimit, SettingCredentialRPMLimit:
+			limit, err := nonNegativeWholeNumber(key, value)
+			if err != nil {
+				return RuntimeSettings{}, err
+			}
+			if key == SettingCredentialConcurrencyLimit {
+				resolved.CredentialConcurrencyLimit = int64(limit)
+			} else {
+				resolved.CredentialRPMLimit = int64(limit)
+			}
 		case SettingGlobalConcurrencyLimit, SettingDefaultAccessKeyConcurrencyLimit, SettingDefaultGroupConcurrencyLimit:
 			limit, err := nonNegativeWholeNumber(key, value)
 			if err != nil {
@@ -404,6 +428,12 @@ func ResolveGroupRuntimeSettings(
 
 func ValidateRuntimeSetting(key string, value any) error {
 	switch key {
+	case SettingQuotaBudget:
+		_, err := parseQuotaBudgetConfig(value)
+		return err
+	case SettingCredentialConcurrencyLimit, SettingCredentialRPMLimit:
+		_, err := nonNegativeWholeNumber(key, value)
+		return err
 	case SettingErrorRules:
 		_, err := health.CompileErrorRules(value, "global")
 		return err

@@ -1,3 +1,4 @@
+import { accountCapacityMessages } from '@shared/account-capacity-messages'
 import { credentialTestMessages } from '@shared/credential-test-messages'
 import { errorRuleMessages } from '@shared/error-rule-messages'
 import { enUS as mirasimStatus } from '@shared/mirasim-status/messages'
@@ -28,6 +29,7 @@ import { enUS as autoModel } from './auto-model'
 import { enUS as subscriptions } from './subscriptions'
 
 export default {
+  accountCapacity: accountCapacityMessages['en-US'],
   credentialBatchTest: credentialTestMessages['en-US'],
   errorRules: errorRuleMessages['en-US'],
   mirasimStatus,

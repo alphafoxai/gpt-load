@@ -1,7 +1,9 @@
+import { accountCapacityMessages } from '@shared/account-capacity-messages'
 import { errorRuleMessages } from '@shared/error-rule-messages'
 import { jaJP as mirasimStatus } from '@shared/mirasim-status/messages'
 import { jaJP as proxies } from '@shared/proxies/messages'
 export default {
+  accountCapacity: accountCapacityMessages['ja-JP'],
   errorRules: errorRuleMessages['ja-JP'],
   mirasimStatus,
   proxies,

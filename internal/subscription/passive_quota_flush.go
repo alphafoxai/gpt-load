@@ -66,6 +66,10 @@ func (manager *CredentialManager) flushOnePassiveQuotaObservationLocked(
 	if manager.registry == nil {
 		return nil
 	}
+	if manager.registry.CredentialAvailability(observation.CredentialID, manager.now()).Suspended {
+		manager.passiveQuota.ack(observation.CredentialID, observation.Version)
+		return nil
+	}
 	ref, ok := manager.registry.CredentialRef(observation.CredentialID)
 	if !ok || ref.IdentityGeneration != observation.IdentityGeneration {
 		manager.passiveQuota.ack(observation.CredentialID, observation.Version)
@@ -123,6 +127,7 @@ func (manager *CredentialManager) flushOnePassiveQuotaObservationLocked(
 			manager.passiveQuota.ack(observation.CredentialID, observation.Version)
 			if row.State == models.CredentialObservationFresh {
 				manager.registry.ApplyQuotaWindows(observation.CredentialID, merge.Windows)
+				manager.registry.ApplyQuotaBudgetWindows(ref, merge.Windows)
 				if merge.Recovered {
 					manager.registry.RestoreObservedQuotaCooldowns(observation.CredentialID, merge.RecoveredAtMS)
 				}
@@ -163,10 +168,24 @@ func mergePassiveQuotaSamples(raw []byte, storedAtMS *int64, observation Passive
 		if sample == nil {
 			continue
 		}
-		windows := sample.Windows
-		if storedAtMS != nil && sample.ObservedAtMS <= *storedAtMS {
-			windows = nil
+		windows := cloneQuotaWindows(sample.Windows)
+		acceptedWindows := windows[:0]
+		for _, patch := range windows {
+			position := matchPassiveQuotaWindow(snapshot.QuotaWindows, patch)
+			if position >= 0 {
+				previous := snapshot.QuotaWindows[position]
+				at := previous.ObservedAtMS
+				if at == nil {
+					at = storedAtMS
+				}
+				if at != nil && sample.ObservedAtMS <= *at {
+					continue
+				}
+			}
+			patch.ObservedAtMS = cloneInt64(&sample.ObservedAtMS)
+			acceptedWindows = append(acceptedWindows, patch)
 		}
+		windows = acceptedWindows
 		credits := cloneCreditSummary(sample.Credits)
 		if credits != nil {
 			if credits.ObservedAtMS == nil {
@@ -288,6 +307,9 @@ func mergePassiveQuotaSnapshot(
 		// primary/secondary 只是上游槽位；周期冲突时连用量、重置时间和状态也不能合并。
 		if previous.WindowSeconds != nil && patch.WindowSeconds != nil &&
 			*previous.WindowSeconds != *patch.WindowSeconds {
+			continue
+		}
+		if previous.ObservedAtMS != nil && patch.ObservedAtMS != nil && *patch.ObservedAtMS <= *previous.ObservedAtMS {
 			continue
 		}
 		outcome.Matched = true

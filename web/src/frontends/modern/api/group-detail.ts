@@ -13,7 +13,13 @@ import { readGroupBasics, type GroupBasics } from './groups'
 export const groupSettingsKey = (id: number) => ['modern', 'group-settings', id] as const
 export const groupModelsKey = (id: number) => ['modern', 'group-models', id] as const
 export const groupCredentialsKey = (id: number) => ['modern', 'group-credentials', id] as const
-export const credentialStates = ['available', 'cooldown', 'blacklisted', 'disabled'] as const
+export const credentialStates = [
+  'available',
+  'cooldown',
+  'blacklisted',
+  'disabled',
+  'suspended',
+] as const
 export type CredentialState = (typeof credentialStates)[number]
 export const credentialSorts = [
   'priority',
@@ -266,6 +272,7 @@ export interface CredentialRow {
   mask: string
   account: string
   state: CredentialState
+  configuredStatus: 'active' | 'disabled' | 'suspended'
   enabled: boolean
   weight: number
   weightManual?: number | null
@@ -285,7 +292,7 @@ export interface CredentialRow {
   lastStatusCode: number | null
   modelCooldowns: { model: string; until: number }[]
   recovery: {
-    mode: 'none' | 'cooldown' | 'probe' | 'manual'
+    mode: 'none' | 'cooldown' | 'probe' | 'manual' | 'suspended'
     automatic: boolean
     at: number | null
   }
@@ -301,7 +308,7 @@ export interface CredentialRow {
 }
 export interface CredentialCollection {
   items: CredentialRow[]
-  counts: Record<CredentialState | 'total', number>
+  counts: Record<Exclude<CredentialState, 'suspended'> | 'total', number>
   total: number
   page: number
   pageSize: number
@@ -324,7 +331,8 @@ export function readCredential(value: unknown): CredentialRow {
     mask: text(row.mask),
     account: account ? text(account.email ?? account.email_mask ?? '') : '',
     state: oneOf(row.effective_status, credentialStates),
-    enabled: oneOf(row.configured_status, ['active', 'disabled']) === 'active',
+    configuredStatus: oneOf(row.configured_status, ['active', 'disabled', 'suspended']),
+    enabled: oneOf(row.configured_status, ['active', 'disabled', 'suspended']) === 'active',
     weight: integer(row.weight),
     weightManual:
       row.weight_manual === undefined
@@ -364,7 +372,7 @@ export function readCredential(value: unknown): CredentialRow {
       return { model: text(cooldown.model), until: integer(cooldown.cooldown_until_ms) }
     }),
     recovery: {
-      mode: oneOf(recovery.mode, ['none', 'cooldown', 'probe', 'manual']),
+      mode: oneOf(recovery.mode, ['none', 'cooldown', 'probe', 'manual', 'suspended']),
       automatic: boolean(recovery.automatic),
       at: recovery.at_ms === null ? null : integer(recovery.at_ms),
     },

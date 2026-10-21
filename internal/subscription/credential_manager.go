@@ -167,6 +167,9 @@ func (manager *CredentialManager) refreshCredentialLocked(
 	if err := manager.db.WithContext(ctx).First(&row, credentialID).Error; err != nil {
 		return subscriptionruntime.Credential{}, localEvidence("credential_unavailable", "subscription credential is unavailable")
 	}
+	if row.Status == models.CredentialStatusSuspended {
+		return subscriptionruntime.Credential{}, localEvidence("credential_suspended", "subscription credential is suspended")
+	}
 	var group models.Group
 	if err := manager.db.WithContext(ctx).Select("id", "channel_id", "connection_type", "params").First(&group, row.GroupID).Error; err != nil ||
 		group.ChannelID != string(channelID) || group.ConnectionType != models.ConnectionTypeSubscription {

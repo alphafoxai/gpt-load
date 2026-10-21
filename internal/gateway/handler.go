@@ -84,6 +84,7 @@ type runtimeCredentialRegistry interface {
 	CaptureActiveCredentialRefs(groupIDs []uint) []state.CredentialRef
 	CredentialRef(credentialID uint) (state.CredentialRef, bool)
 	ActiveEncryptedCredentialDataIfMatch(ref state.CredentialRef) (string, bool)
+	CheckQuotaBudget(state.CredentialRef, state.QuotaBudgetConfig, time.Time) state.QuotaBudgetDecision
 	SetCooldownWithChange(credentialID uint, until time.Time) (exists bool, changed bool)
 	SetCooldownWithChangeIfVersion(credentialID uint, expectedVersion uint64, until time.Time) (matched bool, changed bool)
 	SetModelCooldown(state.CredentialRef, string, time.Time, time.Time) (bool, bool)
@@ -108,6 +109,7 @@ type Handler struct {
 	stats               *health.StatsStore
 	mutations           credentialMutationCoordinator
 	limiter             AccessKeyRPMLimiter
+	credentialCapacity  ratelimit.CredentialCapacity
 	requestLogSink      telemetry.RequestLogSink
 	priceTables         PriceTableProvider
 	accessQuota         *accessquota.Runtime
@@ -1306,6 +1308,13 @@ func (handler *Handler) executeAttempts(
 		}
 		// 异常退出也收尾；普通路径在本次执行结束后立即归还，幂等保护防止重复释放。
 		defer releaseGroup()
+		credentialLease, capacityFailure, capacityRetry := handler.acquireCredentialCapacity(ref)
+		if capacityFailure != nil {
+			setCapacityRetryAfter(ginContext.Writer.Header(), capacityRetry)
+			handler.completeReason(ginContext, recorder, *capacityFailure)
+			return
+		}
+		defer credentialLease.Release()
 		attemptSequence++
 		forwardAttempts++
 		if attemptSequence == 1 {
@@ -1380,6 +1389,10 @@ func (handler *Handler) executeAttempts(
 			result = handler.forwarder.Forward(ginContext.Request.Context(), input)
 		}
 		releaseGroup()
+		if result.DispatchState == execution.DispatchNotSent || result.DispatchState == execution.DispatchLocal {
+			credentialLease.RefundNotDispatched()
+		}
+		credentialLease.Release()
 		result = normalizeUpstreamResultContract(result)
 		if !stream && result.HasResponse() && !result.ProviderErrorBeforeCommit &&
 			result.DispatchState != execution.DispatchLocal &&
@@ -1589,6 +1602,11 @@ func (handler *Handler) executeAttempts(
 		return
 	}
 
+	if budget := iterator.QuotaBudgetDecision(); !budget.Allowed && budget.Reason != "" && forwardAttempts == 0 {
+		setCapacityRetryAfter(ginContext.Writer.Header(), budget.RetryAfter)
+		handler.completeReason(ginContext, recorder, quotaBudgetReason(budget))
+		return
+	}
 	if lastEmptyResponse != nil {
 		handler.completeEmptyResponse(
 			ginContext,

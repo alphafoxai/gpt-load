@@ -431,6 +431,8 @@ func groupCollectionRuntimeCredentialStatus(status models.CredentialStatus) (sta
 		return state.CredentialStatusActive, nil
 	case models.CredentialStatusDisabled:
 		return state.CredentialStatusDisabled, nil
+	case models.CredentialStatusSuspended:
+		return state.CredentialStatusSuspended, nil
 	default:
 		return "", groupCollectionDataError("invalid persisted credential status %q", status)
 	}

@@ -36,4 +36,5 @@ var MessagesEnUS = map[string]string{
 	"group.model_name_conflict":                  "Client model names must be unique within the group",
 	"group.no_active_credential":                 "No active credential is available for this group",
 	"credential.not_found":                       "Credential not found",
+	"credential.suspended": "Credential is suspended. Clear suspension to disabled, then enable it separately. Provider actions are unavailable while suspended.",
 }

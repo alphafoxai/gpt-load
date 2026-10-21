@@ -472,18 +472,9 @@ func countAvailableHomeCredentialsInGroups(
 			)
 		}
 
-		var status state.CredentialStatus
-		switch row.Status {
-		case models.CredentialStatusActive:
-			status = state.CredentialStatusActive
-		case models.CredentialStatusDisabled:
-			status = state.CredentialStatusDisabled
-		default:
-			return 0, fmt.Errorf(
-				"count available home credential %d: invalid persisted status: %w",
-				row.ID,
-				app_errors.ErrInternalServer,
-			)
+		status, err := groupCollectionRuntimeCredentialStatus(row.Status)
+		if err != nil {
+			return 0, err
 		}
 		if credential.Status != status ||
 			credential.Version != groupCollectionCredentialVersion(row.SecretVersion) ||

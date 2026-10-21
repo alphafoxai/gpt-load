@@ -1,3 +1,4 @@
+import { accountCapacityMessages } from '@shared/account-capacity-messages'
 import { credentialTestMessages } from '@shared/credential-test-messages'
 import { errorRuleMessages } from '@shared/error-rule-messages'
 import { jaJP as mirasimStatus } from '@shared/mirasim-status/messages'
@@ -28,6 +29,7 @@ import { jaJP as autoModel } from './auto-model'
 import { jaJP as subscriptions } from './subscriptions'
 
 export default {
+  accountCapacity: accountCapacityMessages['ja-JP'],
   credentialBatchTest: credentialTestMessages['ja-JP'],
   errorRules: errorRuleMessages['ja-JP'],
   mirasimStatus,

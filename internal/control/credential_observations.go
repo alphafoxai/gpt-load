@@ -55,6 +55,7 @@ type ObservationQuotaWindow struct {
 	Remaining     *float64                `json:"remaining,omitempty"`
 	Utilization   *float64                `json:"utilization,omitempty"`
 	ResetAtMS     *int64                  `json:"reset_at_ms,omitempty"`
+	ObservedAtMS  *int64                  `json:"observed_at_ms,omitempty"`
 	WindowSeconds *int64                  `json:"window_seconds,omitempty"`
 	ModelIDs      []string                `json:"model_ids,omitempty"`
 	State         string                  `json:"state"`
@@ -105,6 +106,7 @@ type observationRefreshMode uint8
 const (
 	observationRefreshManual observationRefreshMode = iota
 	observationRefreshAfterReset
+	observationRefreshBudget
 )
 
 type observationFlight struct {
@@ -224,6 +226,13 @@ func (s *Service) refreshCredentialObservationOnce(
 	if err != nil {
 		return CredentialObservationResponse{}, err
 	}
+	observationRef, observationIdentityKnown := s.registry.CredentialRef(credentialID)
+	if err := s.rejectSuspendedCredential(ctx, groupID, credentialID); err != nil {
+		return CredentialObservationResponse{}, err
+	}
+	if mode == observationRefreshBudget && !s.quotaBudgetRefreshEligible(groupID, credentialID) {
+		return CredentialObservationResponse{}, nil
+	}
 	if expectedTarget != nil && !sameSubscriptionTarget(*expectedTarget, group) {
 		return CredentialObservationResponse{}, nil
 	}
@@ -265,6 +274,12 @@ func (s *Service) refreshCredentialObservationOnce(
 	}
 	// 恢复不得覆盖本次额度请求在途期间产生的新拒绝。
 	observationStartedMS := s.now().UTC().UnixMilli()
+	if err := s.rejectSuspendedCredential(observeContext, groupID, credentialID); err != nil {
+		return CredentialObservationResponse{}, err
+	}
+	if mode == observationRefreshBudget && !s.quotaBudgetRefreshEligible(groupID, credentialID) {
+		return CredentialObservationResponse{}, nil
+	}
 	observation, observeErr := s.observeSubscriptionAccount(observeContext, channelID, preparedCredential, target)
 	authRefreshVersion := previous.LastAuthRefreshSecretVersion
 	if subscriptionUpstreamHTTPStatus(observeErr) == http.StatusUnauthorized &&
@@ -305,6 +320,12 @@ func (s *Service) refreshCredentialObservationOnce(
 		version := refreshed.SecretVersion
 		authRefreshVersion = &version
 		observationStartedMS = s.now().UTC().UnixMilli()
+		if err := s.rejectSuspendedCredential(observeContext, groupID, credentialID); err != nil {
+			return CredentialObservationResponse{}, err
+		}
+		if mode == observationRefreshBudget && !s.quotaBudgetRefreshEligible(groupID, credentialID) {
+			return CredentialObservationResponse{}, nil
+		}
 		observation, observeErr = s.observeSubscriptionAccount(observeContext, channelID, preparedCredential, target)
 	}
 	// 额度证据时间取最终响应返回时刻，不能把后续等待锁的时间算入观测时间。
@@ -346,6 +367,10 @@ func (s *Service) refreshCredentialObservationOnce(
 	}
 	// 与被动写入共用凭据锁，比较落盘前最新的窗口，避免重复恢复或使用过时基线。
 	finish := func() (CredentialObservationResponse, error) {
+		currentRef, currentIdentityKnown := s.registry.CredentialRef(credentialID)
+		if !observationIdentityKnown || !currentIdentityKnown || currentRef.IdentityGeneration != observationRef.IdentityGeneration {
+			return CredentialObservationResponse{}, nil
+		}
 		var latest models.CredentialObservation
 		if err := s.db.WithContext(ctx).Take(&latest, "credential_id = ?", credentialID).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 			return CredentialObservationResponse{}, err
@@ -357,6 +382,9 @@ func (s *Service) refreshCredentialObservationOnce(
 				ctx, credential, previous, attemptMS,
 				"observation_payload_invalid", "normalize subscription information", nil,
 			)
+		}
+		for index := range snapshot.QuotaWindows {
+			snapshot.QuotaWindows[index].ObservedAtMS = &completedMS
 		}
 		freshWindows := providerQuotaWindows(snapshot.QuotaWindows)
 		if len(observation.ObservedQuotaScopes) > 0 {
@@ -422,6 +450,9 @@ func (s *Service) refreshCredentialObservationOnce(
 			if snapshot.Credits != nil {
 				snapshot.Credits.ObservedAtMS = &completedMS
 			}
+		}
+		if previousSnapshotOK && previous.IdentityFingerprint == credential.IdentityFingerprint {
+			snapshot.QuotaWindows = preserveNewerQuotaWindows(snapshot.QuotaWindows, previousSnapshot.QuotaWindows)
 		}
 		encoded, err := json.Marshal(snapshot)
 		if err != nil {
@@ -788,6 +819,21 @@ func (s *Service) applyCredentialQuotaObservation(
 		return
 	}
 	s.registry.ApplyQuotaWindows(credentialID, providerQuotaWindows(response.Snapshot.QuotaWindows))
+	if ref, ok := s.registry.CredentialRef(credentialID); ok {
+		s.registry.ApplyQuotaBudgetWindows(ref, providerQuotaWindows(response.Snapshot.QuotaWindows))
+	}
+}
+
+func preserveNewerQuotaWindows(current, previous []ObservationQuotaWindow) []ObservationQuotaWindow {
+	for index, window := range current {
+		for _, old := range previous {
+			if window.ID == old.ID && window.SourceID == old.SourceID && window.Scope == old.Scope && old.ObservedAtMS != nil && (window.ObservedAtMS == nil || *old.ObservedAtMS > *window.ObservedAtMS) {
+				current[index] = old
+				break
+			}
+		}
+	}
+	return current
 }
 
 // providerQuotaWindows narrows the API-facing snapshot windows to the fields
@@ -801,7 +847,8 @@ func providerQuotaWindows(windows []ObservationQuotaWindow) []providerobservatio
 			Scope: window.Scope, Unit: window.Unit, SourceID: window.SourceID,
 			Used: window.Used, Limit: window.Limit, Remaining: window.Remaining, Utilization: window.Utilization,
 			ResetAtMS: window.ResetAtMS, WindowSeconds: window.WindowSeconds, ModelIDs: window.ModelIDs,
-			State: window.State, IsPrimary: window.IsPrimary,
+			ObservedAtMS: window.ObservedAtMS,
+			State:        window.State, IsPrimary: window.IsPrimary,
 		})
 	}
 	return result

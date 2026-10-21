@@ -1,3 +1,4 @@
+import { quotaBudgetNumbers, type QuotaBudgetNumber } from '@shared/quota-budget'
 import type { CodexLiveMode } from '@shared/codex-live'
 import { cloneErrorRules, validErrorRules, type ErrorRule } from '@shared/error-rules'
 import type { RedactionRule } from '@modern/api/request-redaction'
@@ -50,6 +51,7 @@ export type SettingsDraft = Record<SettingNumber, string> &
   Record<SettingSwitch, boolean> & {
     codex_live_mode: CodexLiveMode
     route_strategy: RouteStrategy
+    quota_budget: { enabled: boolean } & Record<QuotaBudgetNumber, string>
     header_rules: HeaderRow[]
     response_header_rules: HeaderRow[]
     cors: CORSDraft
@@ -88,6 +90,12 @@ export function createSettingsDraft(data: SettingsData): SettingsDraft {
       Object.keys(settingNumbers).map((key) => [key, String(values[key as SettingNumber])]),
     ) as Record<SettingNumber, string>),
     header_rules: headerRows(values.header_rules),
+    quota_budget: {
+      enabled: values.quota_budget.enabled,
+      five_hour_percent: String(values.quota_budget.five_hour_percent),
+      seven_day_percent: String(values.quota_budget.seven_day_percent),
+      observation_max_age_seconds: String(values.quota_budget.observation_max_age_seconds),
+    },
     response_header_rules: headerRows(values.response_header_rules),
     proxy_config: { mode: values.proxy_config.configured_mode, id: '' },
     auto_model: autoModelDraft(values.auto_model ?? defaultAutoModel()),
@@ -278,6 +286,12 @@ export function settingsErrors(
     if (key === 'auto_model' && !validAutoDraft(draft.auto_model)) errors.auto_model = 'autoModel'
     if (key === 'error_rules' && !validErrorRules(draft.error_rules))
       errors.error_rules = 'errorRules'
+    if (key === 'quota_budget') {
+      for (const [field, rule] of Object.entries(quotaBudgetNumbers)) {
+        if (!validInteger(draft.quota_budget[field as QuotaBudgetNumber], rule.min, rule.max))
+          errors['quota_budget.' + field] = 'number'
+      }
+    }
     if (key in settingNumbers) {
       const number = key as SettingNumber
       const rule = settingNumbers[number]
@@ -341,6 +355,13 @@ export function buildSettingsPatch(
         remove: draft[key].filter((row) => row.action === 'remove').map((row) => row.name.trim()),
       }
     } else if (key === 'auto_model') patch[key] = autoModelValue(draft.auto_model)
+    else if (key === 'quota_budget')
+      patch[key] = {
+        enabled: draft.quota_budget.enabled,
+        five_hour_percent: Number(draft.quota_budget.five_hour_percent),
+        seven_day_percent: Number(draft.quota_budget.seven_day_percent),
+        observation_max_age_seconds: Number(draft.quota_budget.observation_max_age_seconds),
+      }
     else if (key === 'cors') patch[key] = corsValue(draft.cors)
     else if (key === 'proxy_config') {
       const proxy = draft.proxy_config

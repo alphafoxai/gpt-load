@@ -250,11 +250,13 @@ const fullIcon = computed(
 )
 const segments = computed(() => [
   { value: '', label: t('groupDetail.allCredentials'), count: summary.value?.total },
-  ...credentialStates.map((value) => ({
-    value,
-    label: t('groups.credentials.' + value),
-    count: summary.value?.[value],
-  })),
+  ...credentialStates
+    .filter((value) => value !== 'suspended')
+    .map((value) => ({
+      value,
+      label: t('groups.credentials.' + value),
+      count: summary.value?.[value],
+    })),
 ])
 const sortOptions = computed(() =>
   credentialSorts.map((value) => ({
@@ -336,7 +338,12 @@ const canSyncSelected = computed(
     Boolean(props.channel?.quotaObservation) &&
     rows.value
       .filter((row) => selected.value.has(row.id))
-      .every((row) => row.authState === 'ready') &&
+      .every(
+        (row) =>
+          row.authState === 'ready' &&
+          row.configuredStatus !== 'suspended' &&
+          row.state !== 'suspended',
+      ) &&
     rows.value.some((row) => selected.value.has(row.id) && !syncPending(row.id)),
 )
 watch(bulkBusy, (value) => emit('pending', value), { immediate: true })
@@ -451,7 +458,13 @@ async function runAccountBatch(
   if (!targets.length) return
   if (
     action === 'sync' &&
-    (!props.channel?.quotaObservation || targets.some((row) => row.authState !== 'ready'))
+    (!props.channel?.quotaObservation ||
+      targets.some(
+        (row) =>
+          row.authState !== 'ready' ||
+          row.configuredStatus === 'suspended' ||
+          row.state === 'suspended',
+      ))
   )
     return
   accountBatchPending.value = true
@@ -513,8 +526,14 @@ async function runAccountBatch(
 function openBatchTest(): void {
   if (bulkBusy.value || props.group.connectionType !== 'api_key') return
   testBatchTargets.value = rows.value
-    .filter((row) => selected.value.has(row.id))
+    .filter(
+      (row) =>
+        selected.value.has(row.id) &&
+        row.configuredStatus !== 'suspended' &&
+        row.state !== 'suspended',
+    )
     .map((row) => row.id)
+  if (!testBatchTargets.value.length) error.value = t('accountCapacity.suspensionBlocked')
 }
 async function startBatchTest(
   options: CredentialTestOptions,
@@ -580,6 +599,10 @@ async function changed(): Promise<void> {
 }
 async function toggle(row: CredentialRow, value: boolean): Promise<void> {
   if (busy.value || syncPending(row.id)) return
+  if (row.configuredStatus === 'suspended' || row.state === 'suspended') {
+    cardErrors.value.set(row.id, t('accountCapacity.suspensionBlocked'))
+    return
+  }
   if (!accountBatchPending.value) accountBatch.value = undefined
   mutating.value = row.id
   pendingAction.value = 'toggle'
@@ -806,6 +829,37 @@ async function saveName(row: CredentialRow, name: string): Promise<void> {
 }
 async function action(row: CredentialRow, value: string): Promise<void> {
   if (busy.value || syncPending(row.id)) return
+  if (['suspend', 'clear-suspension'].includes(value)) {
+    mutating.value = row.id
+    pendingAction.value = value
+    cardErrors.value.delete(row.id)
+    try {
+      const result = await updateCredential(
+        client,
+        props.group.id,
+        row.id,
+        { status: value === 'suspend' ? 'suspended' : 'disabled' },
+        controller.signal,
+      )
+      if (controller.signal.aborted) return
+      cacheRow(result)
+      await changed()
+      void cache.invalidateQueries({ queryKey: credentialDetailKey(props.group.id, row.id) })
+    } catch {
+      if (!controller.signal.aborted)
+        cardErrors.value.set(row.id, t('accountCapacity.suspensionFailed'))
+    } finally {
+      mutating.value = undefined
+    }
+    return
+  }
+  if (
+    (row.configuredStatus === 'suspended' || row.state === 'suspended') &&
+    ['quota', 'test', 'restore', 'refresh', 'reset'].includes(value)
+  ) {
+    cardErrors.value.set(row.id, t('accountCapacity.suspensionBlocked'))
+    return
+  }
   if (value === 'quota') {
     if (!props.channel?.quotaObservation || row.authState !== 'ready') return
     if (!accountBatchPending.value) accountBatch.value = undefined

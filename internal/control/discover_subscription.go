@@ -178,6 +178,9 @@ func (s *Service) prepareStoredSubscriptionCredentialInternal(
 	forceRefresh bool,
 	allowRecovery bool,
 ) (subscriptionruntime.Credential, error) {
+	if err := s.rejectSuspendedCredential(ctx, group.ID, row.ID); err != nil {
+		return subscriptionruntime.Credential{}, err
+	}
 	if _, frozen := subscriptionruntime.NetworkFromContext(ctx); !frozen {
 		network, err := s.credentialNetworkContext(ctx, s.db, group, row)
 		if err != nil {
@@ -241,6 +244,8 @@ func subscriptionPreparationAPIError(evidence *execution.ErrorEvidence) error {
 		return nil
 	}
 	switch strings.ToLower(strings.TrimSpace(evidence.Code)) {
+	case "credential_suspended":
+		return app_errors.ErrCredentialSuspended
 	case "refresh_temporarily_unavailable":
 		return app_errors.ErrCredentialRefreshTemporarilyUnavailable
 	case "outcome_unknown", "refreshing", "refresh_outcome_unknown", "refresh_persist_failed",

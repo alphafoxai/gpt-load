@@ -58,7 +58,7 @@ func TestHandlerUsesPublishedRouteStrategyAndPreservesSelectedRoute(t *testing.T
 		t.Fatal(err)
 	}
 	for index, strategy := range []state.RouteStrategy{state.RouteStrategyNativeFirst, state.RouteStrategyWeightedMix} {
-		input.SystemSettings = config.Settings{state.SettingRouteStrategy: string(strategy)}
+		input.SystemSettings = config.Settings{state.SettingRouteStrategy: string(strategy), state.SettingAffinityEnabled: false}
 		if _, err := manager.Publish(input); err != nil {
 			t.Fatalf("publish %s: %v", strategy, err)
 		}

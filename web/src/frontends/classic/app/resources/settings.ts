@@ -1,3 +1,4 @@
+import { readQuotaBudget, type QuotaBudget } from '@shared/quota-budget'
 import { codexLiveModes, type CodexLiveMode } from '@shared/codex-live'
 import { readErrorRules, type ErrorRule } from '@shared/error-rules'
 import { readRedactionRules, type RedactionRule } from './request-redaction'
@@ -47,6 +48,9 @@ export const runtimeSettingKeys = [
   'global_concurrency_limit',
   'default_access_key_concurrency_limit',
   'default_group_concurrency_limit',
+  'credential_concurrency_limit',
+  'credential_rpm_limit',
+  'quota_budget',
   'codex_live_mode',
   'route_strategy',
   'first_byte_timeout',
@@ -80,6 +84,9 @@ export type TimeoutSettingKey = Exclude<
   | 'global_concurrency_limit'
   | 'default_access_key_concurrency_limit'
   | 'default_group_concurrency_limit'
+  | 'credential_concurrency_limit'
+  | 'credential_rpm_limit'
+  | 'quota_budget'
   | 'retry_count'
   | 'blacklist_threshold'
   | 'header_rules'
@@ -102,6 +109,8 @@ export type PolicyCountSettingKey =
   | 'global_concurrency_limit'
   | 'default_access_key_concurrency_limit'
   | 'default_group_concurrency_limit'
+  | 'credential_concurrency_limit'
+  | 'credential_rpm_limit'
 export interface CORSConfigDto {
   enabled: boolean
   allowed_origins: string[]
@@ -126,6 +135,9 @@ export interface SettingsValues {
   global_concurrency_limit: number
   default_access_key_concurrency_limit: number
   default_group_concurrency_limit: number
+  credential_concurrency_limit: number
+  credential_rpm_limit: number
+  quota_budget: QuotaBudget
   retry_count: number
   blacklist_threshold: number
   header_rules: HeaderRulesDto
@@ -167,6 +179,9 @@ export type SettingsPatch = Partial<{
   global_concurrency_limit: number | null
   default_access_key_concurrency_limit: number | null
   default_group_concurrency_limit: number | null
+  credential_concurrency_limit: number | null
+  credential_rpm_limit: number | null
+  quota_budget: QuotaBudget | null
   retry_count: number | null
   blacklist_threshold: number | null
   header_rules: HeaderRulesDto | null
@@ -299,6 +314,11 @@ export function projectSettings(value: unknown): SettingsDto {
       default_group_concurrency_limit: projectSafeInteger(values.default_group_concurrency_limit, {
         minimum: 0,
       }),
+      credential_concurrency_limit: projectSafeInteger(values.credential_concurrency_limit, {
+        minimum: 0,
+      }),
+      credential_rpm_limit: projectSafeInteger(values.credential_rpm_limit, { minimum: 0 }),
+      quota_budget: readQuotaBudget(values.quota_budget),
       retry_count: projectSafeInteger(values.retry_count, { minimum: 0 }),
       blacklist_threshold: projectSafeInteger(values.blacklist_threshold, { minimum: 0 }),
       header_rules: projectHeaderRules(values.header_rules),

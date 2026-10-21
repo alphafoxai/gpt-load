@@ -24,6 +24,7 @@ import (
 	"gpt-load/internal/platform/config"
 	"gpt-load/internal/platform/utils"
 	"gpt-load/internal/protocol"
+	"gpt-load/internal/ratelimit"
 	"gpt-load/internal/scheduler"
 	"gpt-load/internal/state"
 	subscriptionruntime "gpt-load/internal/subscription/runtime"
@@ -306,6 +307,7 @@ func (handler *Handler) createCodexLive(c *gin.Context, request *dataPlaneReques
 			return
 		}
 		releaseGroup, groupFailure := handler.acquireGroupConcurrency(selection.GroupID)
+		var credentialLease ratelimit.CredentialLease
 		if groupFailure != nil {
 			failed(*groupFailure)
 			return
@@ -314,9 +316,10 @@ func (handler *Handler) createCodexLive(c *gin.Context, request *dataPlaneReques
 		defer func() {
 			if !groupTransferred {
 				releaseGroup()
+				credentialLease.Release()
 			}
 		}()
-		releaseConcurrency := func() { releaseGroup(); releaseRequest() }
+		releaseConcurrency := func() { credentialLease.Release(); releaseGroup(); releaseRequest() }
 		var media *liveMediaSession
 		upstreamOffer := offer
 		if selection.Group.CodexLiveMode == state.CodexLiveRelay {
@@ -338,6 +341,14 @@ func (handler *Handler) createCodexLive(c *gin.Context, request *dataPlaneReques
 				_ = media.Close()
 			}
 		}()
+		var capacityFailure *reason
+		var capacityRetry time.Duration
+		credentialLease, capacityFailure, capacityRetry = handler.acquireCredentialCapacity(ref)
+		if capacityFailure != nil {
+			setCapacityRetryAfter(c.Writer.Header(), capacityRetry)
+			failed(*capacityFailure)
+			return
+		}
 		started := recorder.beforeForward()
 		updateDebugHeaders(c.Writer.Header(), selection.Group.Name, sequence)
 		upstream, evidence := handler.liveOpener.OpenLive(setupContext, spec, upstreamOffer, sessionJSON)
@@ -393,6 +404,10 @@ func (handler *Handler) createCodexLive(c *gin.Context, request *dataPlaneReques
 				refreshSelection = &selection
 			}
 			releaseGroup()
+			if upstream.DispatchState == execution.DispatchNotSent || upstream.DispatchState == execution.DispatchLocal {
+				credentialLease.RefundNotDispatched()
+			}
+			credentialLease.Release()
 			recorder.retryIfAnotherForward(attemptIndex)
 			continue
 		}

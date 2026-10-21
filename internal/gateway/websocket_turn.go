@@ -398,6 +398,16 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 		} else {
 			selection, err = iterator.Next()
 			if err != nil {
+				if budget := iterator.QuotaBudgetDecision(); !budget.Allowed && budget.Reason != "" && forwardAttempts == 0 {
+					value := quotaBudgetReason(budget)
+					recorder.completeReason(value)
+					until := time.Time{}
+					if budget.RetryAfter > 0 {
+						until = h.now().Add(budget.RetryAfter)
+					}
+					s.emitReasonUntil(turn.lane, value, until)
+					return
+				}
 				if finishRejectedAttempt != nil {
 					finishRejectedAttempt()
 					return
@@ -554,6 +564,17 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 			return
 		}
 		defer releaseGroup()
+		credentialLease, capacityFailure, capacityRetry := h.acquireCredentialCapacity(ref)
+		if capacityFailure != nil {
+			recorder.completeReason(*capacityFailure)
+			until := time.Time{}
+			if capacityRetry > 0 {
+				until = h.now().Add(capacityRetry)
+			}
+			s.emitReasonUntil(turn.lane, *capacityFailure, until)
+			return
+		}
+		defer credentialLease.Release()
 		started := recorder.beforeForward()
 		forwardAttempts++
 		ctx, cancel := context.WithTimeout(requestCtx, selection.Group.Timeouts.Request)
@@ -622,6 +643,10 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 		cancel()
 		releaseInput()
 		releaseGroup()
+		if result.DispatchState == execution.DispatchNotSent || result.DispatchState == execution.DispatchLocal {
+			credentialLease.RefundNotDispatched()
+		}
+		credentialLease.Release()
 		for _, name := range []string{"X-Request-Id", "Request-Id", "Openai-Request-Id", "X-Oai-Request-Id"} {
 			if value := result.Header.Get(name); value != "" && len(value) <= 1024 {
 				result.UpstreamRequestID = recorder.redactor.String(value, credential.secrets...)

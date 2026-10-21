@@ -27,6 +27,7 @@ func MergeQuotaWindow(previous, patch QuotaWindow) QuotaWindow {
 	if patch.Utilization != nil {
 		merged.Used, merged.Limit = patch.Used, patch.Limit
 		merged.Remaining, merged.Utilization = patch.Remaining, patch.Utilization
+		merged.ObservedAtMS = patch.ObservedAtMS
 	}
 	if patch.ResetAtMS != nil {
 		merged.ResetAtMS = patch.ResetAtMS

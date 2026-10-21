@@ -156,16 +156,16 @@ func TestQuotaHistoryKeepsNamedWebsocketSourcesSeparate(t *testing.T) {
 	}
 }
 
-func TestQuotaHistoryOnlyPersistsWindowsOfAtLeastOneDay(t *testing.T) {
+func TestQuotaHistoryPersistsFiveHourAndLongerWindows(t *testing.T) {
 	manager, db, registry, _, credential := newCredentialManagerFixture(t, credentialJSON("access", "refresh", time.Now().Add(time.Hour)))
 	newFlushableCredentialObservation(t, manager, credential.ID, models.CredentialObservationFresh, `{"quota_windows":[]}`)
 	ref, _ := registry.CredentialRef(credential.ID)
-	fiveHours, belowDay, oneDay, oneWeek := int64(18_000), int64(86_399), int64(86_400), int64(604_800)
+	belowFiveHours, fiveHours, oneDay, oneWeek := int64(17_999), int64(18_000), int64(86_400), int64(604_800)
 	used := 0.25
 	manager.RecordPassiveQuotaObservation(credential.ID, ref.IdentityGeneration, 10_000, []providerobservation.QuotaWindow{
 		{ID: "unknown", Utilization: &used},
-		{ID: "five-hours", WindowSeconds: &fiveHours, Utilization: &used},
-		{ID: "below-day", WindowSeconds: &belowDay, Utilization: &used},
+		{ID: "five_hour", WindowSeconds: &fiveHours, Utilization: &used},
+		{ID: "below-five-hours", WindowSeconds: &belowFiveHours, Utilization: &used},
 		{ID: "one-day", WindowSeconds: &oneDay, Utilization: &used},
 		{ID: "one-week", WindowSeconds: &oneWeek, Utilization: &used},
 	})
@@ -176,8 +176,8 @@ func TestQuotaHistoryOnlyPersistsWindowsOfAtLeastOneDay(t *testing.T) {
 	if err := db.Order("window_seconds").Find(&rows).Error; err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) != 2 || rows[0].WindowID != "one-day" || rows[1].WindowID != "one-week" {
-		t.Fatalf("short or unknown periods entered history: %+v", rows)
+	if len(rows) != 3 || rows[0].WindowID != "five_hour" || rows[1].WindowID != "one-day" || rows[2].WindowID != "one-week" {
+		t.Fatalf("five-hour history missing or invalid period admitted: %+v", rows)
 	}
 }
 

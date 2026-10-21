@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { validQuotaBudget } from '@shared/quota-budget'
+import CapacitySettingsSection from './CapacitySettingsSection.vue'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -140,6 +142,7 @@ const navItems = computed(() => [
   { id: 'settings-routing', label: t('settings.navigation.routing') },
   { id: 'settings-connection', label: t('settings.navigation.connection') },
   { id: 'settings-reliability', label: t('settings.navigation.reliability') },
+  { id: 'settings-capacity', label: t('accountCapacity.title') },
   { id: 'settings-browser-access', label: t('settings.navigation.browserAccess') },
   { id: 'settings-data-maintenance', label: t('settings.navigation.dataMaintenance') },
   { id: 'settings-redaction', label: t('requestRedaction.title') },
@@ -202,6 +205,7 @@ const invalidKeys = computed<RuntimeSettingKey[]>(() => {
     if (!current.overrides.has(key)) return false
     if (timeoutKeys.includes(key as (typeof timeoutKeys)[number]))
       return !isValidTimeout(current.values[key as (typeof timeoutKeys)[number]])
+    if (key === 'quota_budget') return !validQuotaBudget(current.values.quota_budget)
     if (key === 'header_rules') return !headerRulesValid.value
     if (key === 'cors') return !corsValid.value
     if (key === 'response_header_rules') return !responseHeaderRulesValid.value
@@ -214,7 +218,9 @@ const invalidKeys = computed<RuntimeSettingKey[]>(() => {
       key === 'blacklist_threshold' ||
       key === 'global_concurrency_limit' ||
       key === 'default_access_key_concurrency_limit' ||
-      key === 'default_group_concurrency_limit'
+      key === 'default_group_concurrency_limit' ||
+      key === 'credential_concurrency_limit' ||
+      key === 'credential_rpm_limit'
     )
       return !isValidNonNegativeInteger(current.values[key])
     return false
@@ -292,6 +298,7 @@ function sectionFromID(id: string): SettingsSection | undefined {
   return section === 'routing' ||
     section === 'connection' ||
     section === 'reliability' ||
+    section === 'capacity' ||
     section === 'browser-access' ||
     section === 'data-maintenance' ||
     section === 'interface' ||
@@ -329,6 +336,8 @@ function confirmDiscard(): void {
 }
 
 function settingLabel(key: RuntimeSettingKey): string {
+  if (['credential_concurrency_limit', 'credential_rpm_limit', 'quota_budget'].includes(key))
+    return t('accountCapacity.' + key)
   if (key === 'error_rules') return t('errorRules.title')
   if (key === 'request_redaction') return t('requestRedaction.title')
   if (key === 'jev') return t('jev.title')
@@ -353,6 +362,8 @@ function settingTarget(key: RuntimeSettingKey): string {
 }
 
 function sectionForKey(key: RuntimeSettingKey): SettingsSection {
+  if (['credential_concurrency_limit', 'credential_rpm_limit', 'quota_budget'].includes(key))
+    return 'capacity'
   if (key === 'request_redaction') return 'redaction'
   if (['auto_model', 'jev', 'request_audit'].includes(key)) return 'experimental'
   if (key === 'header_rules' || key === 'cors' || key === 'response_header_rules')
@@ -486,6 +497,12 @@ onBeforeUnmount(() => {
               @update:proxy-endpoint="proxyEndpoint = $event"
             />
             <ReliabilitySettingsSection
+              :base="base"
+              :draft="draft"
+              :disabled="pageOperationLocked"
+              @change="updateDraft"
+            />
+            <CapacitySettingsSection
               :base="base"
               :draft="draft"
               :disabled="pageOperationLocked"

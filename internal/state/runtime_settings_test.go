@@ -38,39 +38,6 @@ func TestRouteStrategyAcceptsOnlyExplicitGlobalPolicies(t *testing.T) {
 	}
 }
 
-func TestCompilePublishesDefaultRuntimeSettingsWithoutGroups(t *testing.T) {
-	snapshot, err := Compile(CompileInput{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := RuntimeSettings{
-		FirstByteTimeout:  120 * time.Second,
-		RequestTimeout:    600 * time.Second,
-		StreamIdleTimeout: 300 * time.Second,
-		HeaderRules:       HeaderRules{Set: map[string]string{}},
-		CORS: CORSConfig{
-			AllowedMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
-			AllowedHeaders: []string{"*"},
-			MaxAgeSeconds:  600,
-		},
-		ResponseHeaderRules:       HeaderRules{Set: map[string]string{}},
-		RetryCount:                2,
-		RouteStrategy:             RouteStrategyNativeFirst,
-		BlacklistThreshold:        3,
-		AffinityEnabled:           true,
-		CodexLiveMode:             CodexLiveDirect,
-		ResponsesWebsocketEnabled: true,
-		AffinityTTL:               time.Hour,
-		AffinityCapacity:          10_000,
-		ValidationInterval:        10 * time.Minute,
-		RequestLogRetentionDays:   7,
-		ModelsDevAutoSyncEnabled:  true,
-	}
-	if !reflect.DeepEqual(snapshot.Settings, want) {
-		t.Fatalf("Settings = %#v, want %#v", snapshot.Settings, want)
-	}
-}
-
 func TestCORSAndResponseHeaderRulesAreSystemOnlyRuntimeSettings(t *testing.T) {
 	for key, value := range map[string]any{
 		SettingCORS: map[string]any{

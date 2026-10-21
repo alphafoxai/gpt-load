@@ -20,8 +20,8 @@ import (
 
 const quotaHistoryCapacity = 4096
 
-// QuotaHistoryMinimumWindowSeconds 仅为日级及更长周期保留额度历史。
-const QuotaHistoryMinimumWindowSeconds int64 = 24 * 60 * 60
+// QuotaHistoryMinimumWindowSeconds includes the provider's five-hour window.
+const QuotaHistoryMinimumWindowSeconds int64 = 5 * 60 * 60
 
 type quotaHistoryKey struct {
 	credentialID uint

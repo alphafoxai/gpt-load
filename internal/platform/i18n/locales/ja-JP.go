@@ -36,4 +36,5 @@ var MessagesJaJP = map[string]string{
 	"group.model_name_conflict":                  "グループ内のクライアントモデル名は一意である必要があります",
 	"group.no_active_credential":                 "このグループには利用可能な認証情報がありません",
 	"credential.not_found":                       "認証情報が存在しません",
+	"credential.suspended": "認証情報は一時停止中です。個別に停止を解除して無効にした後、別の操作で有効にしてください。停止中はプロバイダーへの操作を実行できません。",
 }

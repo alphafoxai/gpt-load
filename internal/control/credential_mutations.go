@@ -34,7 +34,7 @@ func normalizeCredentialUpdate(
 	}
 	if request.Status.Set {
 		if request.Status.Null ||
-			(request.Status.Value != state.CredentialStatusActive && request.Status.Value != state.CredentialStatusDisabled) {
+			(request.Status.Value != state.CredentialStatusActive && request.Status.Value != state.CredentialStatusDisabled && request.Status.Value != state.CredentialStatusSuspended) {
 			return nil, nil, false, nil, false, app_errors.ErrValidation
 		}
 		value := request.Status.Value
@@ -173,6 +173,9 @@ func (s *Service) UpdateGroupCredential(
 		view, exists := findRuntimeCredential(s.registry.Snapshot(), credentialID)
 		if err := validateCredentialRuntimeRow(group, committed, view, exists); err != nil {
 			return err
+		}
+		if committed.Status == models.CredentialStatusSuspended && status != nil && *status == state.CredentialStatusActive {
+			return app_errors.ErrCredentialSuspended
 		}
 		updatedAtMS, err := nextCredentialUpdatedAtMS(s.now(), committed.UpdatedAtMS)
 		if err != nil {
@@ -318,6 +321,9 @@ func (s *Service) restoreGroupCredential(
 			return CredentialItemResponse{}, credentialNotFoundError()
 		}
 		return CredentialItemResponse{}, app_errors.ParseDBError(err)
+	}
+	if row.Status == models.CredentialStatusSuspended {
+		return CredentialItemResponse{}, app_errors.ErrCredentialSuspended
 	}
 	view, exists := findRuntimeCredential(s.registry.Snapshot(), credentialID)
 	if err := validateCredentialRuntimeRow(group, row, view, exists); err != nil {
@@ -605,6 +611,21 @@ func (s *Service) BatchGroupCredentials(
 		}
 		rowByID[row.ID] = row
 	}
+	if request.Action == CredentialBatchEnable || request.Action == CredentialBatchDisable {
+		eligible := make([]uint, 0, len(ids))
+		for _, id := range ids {
+			if rowByID[id].Status != models.CredentialStatusSuspended {
+				eligible = append(eligible, id)
+			}
+		}
+		ids = eligible
+		if len(ids) == 0 {
+			return CredentialBatchResponse{
+				AffectedCredentialIDs: []uint{},
+				Summary:               summarizeGroupRuntimeCredentials(group, s.registry.Snapshot(), s.now().UTC()),
+			}, nil
+		}
+	}
 	coordinator, ok := s.mutations.(interface{ DoMany([]uint, func()) })
 	if !ok {
 		return CredentialBatchResponse{}, fmt.Errorf("batch mutation coordinator unavailable: %w", app_errors.ErrInternalServer)
@@ -631,10 +652,7 @@ func (s *Service) BatchGroupCredentials(
 		}
 		persist := func() error {
 			return s.withControlTransaction(ctx, func(tx *gorm.DB) error {
-				query := tx.Where("group_id = ?", groupID)
-				if !all {
-					query = query.Where("id IN ?", ids)
-				}
+				query := tx.Where("group_id = ? AND id IN ?", groupID, ids)
 				var result *gorm.DB
 				switch request.Action {
 				case CredentialBatchEnable:
@@ -729,6 +747,9 @@ func (s *Service) restoreCredentialBatchRuntime(group models.Group, entries []st
 	now := s.now().UTC()
 	restored := make([]uint, 0, len(entries))
 	for _, entry := range entries {
+		if entry.Status == state.CredentialStatusSuspended {
+			continue
+		}
 		view := entry.RuntimeView()
 		bucket := classifyHealthKey(groupView, view, now)
 		if bucket != healthBucketCooldown && bucket != healthBucketBlacklisted && !hasModelCooldown(view.ModelCooldowns, now) {

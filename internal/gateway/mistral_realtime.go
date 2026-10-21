@@ -24,6 +24,7 @@ import (
 	"gpt-load/internal/health"
 	"gpt-load/internal/outboundproxy"
 	"gpt-load/internal/protocol"
+	"gpt-load/internal/ratelimit"
 	"gpt-load/internal/scheduler"
 	"gpt-load/internal/state"
 	subscriptionruntime "gpt-load/internal/subscription/runtime"
@@ -179,6 +180,7 @@ func (handler *Handler) dialMistralRealtime(ctx context.Context, c *gin.Context,
 			return nil, "", nil, &value
 		}
 		ref := query.AllowedCredentialRefs[selection.CredentialID]
+		var credentialLease ratelimit.CredentialLease
 		releaseGroup, rejection := handler.acquireGroupConcurrency(selection.GroupID)
 		if rejection != nil {
 			return nil, "", nil, rejection
@@ -187,14 +189,16 @@ func (handler *Handler) dialMistralRealtime(ctx context.Context, c *gin.Context,
 		defer func() {
 			if !transferred {
 				releaseGroup()
+				credentialLease.Release()
 			}
 		}()
-		conn, dialFailure, decision := handler.dialMistralRealtimeSelection(ctx, recorder, selection, ref, rawQuery, sequence)
+		conn, dialFailure, decision := handler.dialMistralRealtimeSelection(ctx, recorder, selection, ref, rawQuery, sequence, &credentialLease, c.Writer.Header())
 		if dialFailure == nil {
 			transferred = true
-			return conn, *selection.UpstreamModelID, releaseGroup, nil
+			return conn, *selection.UpstreamModelID, func() { credentialLease.Release(); releaseGroup() }, nil
 		}
 		releaseGroup()
+		credentialLease.Release()
 		failure = *dialFailure
 		if !decision.CooldownUntil.IsZero() {
 			cooldownUntil = decision.CooldownUntil
@@ -224,7 +228,7 @@ func (handler *Handler) setMistralRealtimeRetryAfter(c *gin.Context, failure rea
 
 // dialMistralRealtimeSelection dials one selected credential. The upstream
 // status is kept for the client, health decision, and request log.
-func (handler *Handler) dialMistralRealtimeSelection(ctx context.Context, recorder *requestRecorder, selection scheduler.Selection, ref state.CredentialRef, rawQuery string, sequence int) (*websocket.Conn, *reason, health.Decision) {
+func (handler *Handler) dialMistralRealtimeSelection(ctx context.Context, recorder *requestRecorder, selection scheduler.Selection, ref state.CredentialRef, rawQuery string, sequence int, lease *ratelimit.CredentialLease, downstreamHeader http.Header) (*websocket.Conn, *reason, health.Decision) {
 	encrypted, exists := handler.registry.ActiveEncryptedCredentialDataIfMatch(ref)
 	if !exists {
 		value := reasonConfigurationChanged
@@ -256,6 +260,12 @@ func (handler *Handler) dialMistralRealtimeSelection(ctx context.Context, record
 		return nil, &value, health.Decision{}
 	}
 	header := http.Header{"Authorization": {"Bearer " + credential.apiKey}}
+	credentialLease, capacityFailure, capacityRetry := handler.acquireCredentialCapacity(ref)
+	if capacityFailure != nil {
+		setCapacityRetryAfter(downstreamHeader, capacityRetry)
+		return nil, capacityFailure, health.Decision{}
+	}
+	*lease = credentialLease
 	started := recorder.beforeForward()
 	conn, response, dialErr := dialer.DialContext(ctx, endpoint, header)
 	completed := handler.requestNow()
@@ -286,6 +296,9 @@ func (handler *Handler) dialMistralRealtimeSelection(ctx context.Context, record
 			_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 64<<10))
 			_ = response.Body.Close()
 		}
+	}
+	if dispatch == execution.DispatchNotSent {
+		lease.RefundNotDispatched()
 	}
 	value := reason{Status: status, Code: "mistral_realtime_upstream_failed", Message: "Realtime transcription upstream handshake failed."}
 	evidence := &execution.ErrorEvidence{

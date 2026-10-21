@@ -49,6 +49,7 @@ const emit = defineEmits<{
   'open-weight': [item: CredentialItemDto]
   weight: [payload: { item: CredentialItemDto; value: string }]
   toggle: [item: CredentialItemDto]
+  suspension: [item: CredentialItemDto]
   test: [item: CredentialItemDto]
   restore: [item: CredentialItemDto]
   remove: [item: CredentialItemDto]
@@ -102,6 +103,7 @@ const testDetail = computed(() => {
     .join(' · ')
 })
 const recoveryLabel = computed(() => {
+  if (props.item.recovery.mode === 'suspended') return t('accountCapacity.suspensionHelp')
   if (props.item.recovery.mode === 'none') return t('group.credentials.recovery.none')
   if (props.item.recovery.at_ms !== null)
     return t('group.credentials.recovery.at', {
@@ -144,10 +146,11 @@ function openWeightFromColumn(): void {
   emit('open-weight', props.item)
 }
 
-function runMenuAction(action: 'test' | 'toggle' | 'restore' | 'remove'): void {
+function runMenuAction(action: 'test' | 'toggle' | 'restore' | 'remove' | 'suspension'): void {
   menuOpen.value = false
   if (action === 'test') emit('test', props.item)
   else if (action === 'toggle') emit('toggle', props.item)
+  else if (action === 'suspension') emit('suspension', props.item)
   else if (action === 'restore') emit('restore', props.item)
   else emit('remove', props.item)
 }
@@ -199,7 +202,11 @@ function runMenuAction(action: 'test' | 'toggle' | 'restore' | 'remove'): void {
         }}</span>
         <div class="group-credential-record__status-badges">
           <StatusBadge :status="item.effective_status" size="compact">
-            {{ t(`group.credentials.effective.${item.effective_status}`) }}
+            {{
+              item.effective_status === 'suspended'
+                ? t('accountCapacity.suspended')
+                : t(`group.credentials.effective.${item.effective_status}`)
+            }}
           </StatusBadge>
           <StatusBadge v-if="item.model_cooldowns.length > 0" tone="warning" size="compact">{{
             t('group.credentials.modelCooldown.count', { count: n(item.model_cooldowns.length) })
@@ -261,10 +268,18 @@ function runMenuAction(action: 'test' | 'toggle' | 'restore' | 'remove'): void {
             </IconButton>
           </template>
           <div class="group-credential-record__menu">
-            <button type="button" :disabled="busy" @click="runMenuAction('test')">
+            <button
+              type="button"
+              :disabled="busy || item.configured_status === 'suspended'"
+              @click="runMenuAction('test')"
+            >
               <Activity :size="15" aria-hidden="true" />{{ t('group.credentials.test.action') }}
             </button>
-            <button type="button" :disabled="busy" @click="runMenuAction('toggle')">
+            <button
+              type="button"
+              :disabled="busy || item.configured_status === 'suspended'"
+              @click="runMenuAction('toggle')"
+            >
               <CircleOff v-if="item.configured_status === 'active'" :size="15" aria-hidden="true" />
               <CircleCheck v-else :size="15" aria-hidden="true" />
               {{
@@ -274,7 +289,21 @@ function runMenuAction(action: 'test' | 'toggle' | 'restore' | 'remove'): void {
               }}
             </button>
             <button
-              v-if="isProblem"
+              type="button"
+              :disabled="busy"
+              :title="t('accountCapacity.suspensionHelp')"
+              @click="runMenuAction('suspension')"
+            >
+              {{
+                t(
+                  item.configured_status === 'suspended'
+                    ? 'accountCapacity.clearSuspension'
+                    : 'accountCapacity.markSuspended',
+                )
+              }}
+            </button>
+            <button
+              v-if="isProblem && item.configured_status !== 'suspended'"
               type="button"
               :disabled="busy"
               @click="runMenuAction('restore')"

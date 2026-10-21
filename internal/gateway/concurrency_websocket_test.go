@@ -19,7 +19,7 @@ import (
 )
 
 func TestConcurrencyWebsocketTurnsAndHotLimits(t *testing.T) {
-	for _, layer := range []string{"global", "key", "group"} {
+	for _, layer := range []string{"global", "key", "group", "credential"} {
 		t.Run(layer, func(t *testing.T) {
 			started, finish := make(chan struct{}), make(chan struct{})
 			unblock := sync.OnceFunc(func() { close(finish) })
@@ -76,6 +76,8 @@ func TestConcurrencyWebsocketTurnsAndHotLimits(t *testing.T) {
 				input.SystemSettings["default_access_key_concurrency_limit"] = 1
 			case "group":
 				input.Groups[0].Settings = config.Settings{"concurrency_limit": 1}
+			case "credential":
+				input.SystemSettings[state.SettingCredentialConcurrencyLimit] = 1
 			}
 			if _, err := h.manager.Publish(input); err != nil {
 				t.Fatal(err)
@@ -91,7 +93,11 @@ func TestConcurrencyWebsocketTurnsAndHotLimits(t *testing.T) {
 			if err := second.ReadJSON(&event); err != nil {
 				t.Fatal(err)
 			}
-			if event.Type != "error" || event.Error.Code != "concurrency_limit_exceeded" || calls.Load() != 1 {
+			wantCode := "concurrency_limit_exceeded"
+			if layer == "credential" {
+				wantCode = "credential_concurrency_limit_exceeded"
+			}
+			if event.Type != "error" || event.Error.Code != wantCode || calls.Load() != 1 {
 				t.Fatalf("old connection ignored new capacity: %+v", event)
 			}
 			unblock()

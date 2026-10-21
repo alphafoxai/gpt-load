@@ -1,3 +1,4 @@
+import { accountCapacityMessages } from '@shared/account-capacity-messages'
 import { credentialTestMessages } from '@shared/credential-test-messages'
 import { errorRuleMessages } from '@shared/error-rule-messages'
 import { zhCN as mirasimStatus } from '@shared/mirasim-status/messages'
@@ -28,6 +29,7 @@ import { zhCN as autoModel } from './auto-model'
 import { zhCN as subscriptions } from './subscriptions'
 
 export default {
+  accountCapacity: accountCapacityMessages['zh-CN'],
   credentialBatchTest: credentialTestMessages['zh-CN'],
   errorRules: errorRuleMessages['zh-CN'],
   mirasimStatus,

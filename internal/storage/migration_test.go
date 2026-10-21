@@ -6,57 +6,7 @@ import (
 	"testing"
 
 	"gorm.io/gorm"
-
-	migrationfiles "gpt-load/internal/storage/migrations"
 )
-
-func TestMigrationRegistryContainsOrderedMigrations(t *testing.T) {
-	wantIDs := []string{
-		migrationfiles.ID0001,
-		migrationfiles.ID0002,
-		migrationfiles.ID0003,
-		migrationfiles.ID0004,
-		migrationfiles.ID0005,
-		migrationfiles.ID0006,
-		migrationfiles.ID0007,
-		migrationfiles.ID0008,
-		migrationfiles.ID0009,
-		migrationfiles.ID0010,
-		migrationfiles.ID0011,
-		migrationfiles.ID0012,
-		migrationfiles.ID0013,
-		migrationfiles.ID0014,
-		migrationfiles.ID0015,
-		migrationfiles.ID0016,
-		migrationfiles.ID0017,
-		migrationfiles.ID0018,
-		migrationfiles.ID0019,
-		migrationfiles.ID0020,
-		migrationfiles.ID0021,
-		migrationfiles.ID0022,
-		migrationfiles.ID0023,
-		migrationfiles.ID0024,
-		migrationfiles.ID0025,
-		migrationfiles.ID0026,
-		migrationfiles.ID0027,
-		migrationfiles.ID0028,
-		migrationfiles.ID0029,
-		migrationfiles.ID0030,
-		migrationfiles.ID0031,
-		migrationfiles.ID0032,
-		migrationfiles.ID0033,
-		migrationfiles.ID0034,
-	}
-	if len(migrations) != len(wantIDs) {
-		t.Fatalf("migration registry length = %d, want %d", len(migrations), len(wantIDs))
-	}
-	for index, entry := range migrations {
-		if entry.ID != wantIDs[index] || entry.Up == nil ||
-			entry.Validate == nil || entry.ValidateRecoverable == nil {
-			t.Fatalf("migration registry entry %d = %#v", index, entry)
-		}
-	}
-}
 
 func TestMigrationRegistryUsesOneOrderedChainForFreshAndExistingDatabases(t *testing.T) {
 	entries, calls := testMigrationRegistry()

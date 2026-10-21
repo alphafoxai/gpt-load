@@ -191,6 +191,16 @@ func validateInitialSchemaAfter0003(db *gorm.DB) error {
 				strings.EqualFold(constraint, credentialObservationFreshCheck0003) {
 				continue
 			}
+			if definition.table == "credentials" && constraint == credentialStatusConstraint0035 &&
+				!db.Migrator().HasConstraint(definition.model, constraint) {
+				resuming, err := credentialStatusReplacementInProgress0035(db)
+				if err != nil {
+					return err
+				}
+				if resuming {
+					continue
+				}
+			}
 			if !db.Migrator().HasConstraint(definition.model, constraint) {
 				return fmt.Errorf(
 					"validate current initial schema: constraint %q on %q is missing",

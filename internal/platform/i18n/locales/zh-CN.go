@@ -36,4 +36,5 @@ var MessagesZhCN = map[string]string{
 	"group.model_name_conflict":                  "分组内客户端模型名称必须唯一",
 	"group.no_active_credential":                 "该分组没有可用凭据",
 	"credential.not_found":                       "凭据不存在",
+	"credential.suspended": "凭据已暂停。请先单独清除暂停并设为禁用，再另行启用。暂停期间不可执行上游操作。",
 }

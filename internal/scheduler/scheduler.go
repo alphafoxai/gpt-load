@@ -80,6 +80,7 @@ type Iterator struct {
 	allowedCredentialRefs map[uint]credentialIdentity
 	staticReason          ReasonCode
 	now                   func() time.Time
+	quotaBudgetDecision   state.QuotaBudgetDecision
 }
 
 type normalizedQuery struct {
@@ -270,6 +271,9 @@ func (iterator *Iterator) withWeightedPool(candidates *candidatePool, modes []ch
 					continue
 				}
 			}
+			if !iterator.quotaBudgetAllows(credential, now) {
+				continue
+			}
 			if _, skipped := iterator.skippedGroups[credential.GroupID]; skipped {
 				continue
 			}
@@ -286,6 +290,10 @@ func (iterator *Iterator) withWeightedPool(candidates *candidatePool, modes []ch
 		}
 		fn(weighted)
 	}
+	if iterator.snapshot != nil && iterator.snapshot.Settings.QuotaBudget.Enabled {
+		consume(iterator.credentials.CollectCredentialCandidates(groupIDs, excluded, now))
+		return
+	}
 	if source, ok := iterator.credentials.(interface {
 		WithCredentialCandidates([]uint, func(uint) bool, time.Time, func([]state.CredentialMeta))
 	}); ok {
@@ -293,6 +301,39 @@ func (iterator *Iterator) withWeightedPool(candidates *candidatePool, modes []ch
 	} else {
 		consume(iterator.credentials.CollectCredentialCandidates(groupIDs, excluded, now))
 	}
+}
+
+func (iterator *Iterator) QuotaBudgetDecision() state.QuotaBudgetDecision {
+	if iterator == nil {
+		return state.QuotaBudgetDecision{}
+	}
+	return iterator.quotaBudgetDecision
+}
+
+func (iterator *Iterator) quotaBudgetAllows(meta state.CredentialMeta, now time.Time) bool {
+	if iterator.snapshot == nil || !iterator.snapshot.Settings.QuotaBudget.Enabled {
+		return true
+	}
+	group := iterator.snapshot.Groups[meta.GroupID]
+	if group.ChannelID != channel.Claude || group.ConnectionType != "subscription" {
+		return true
+	}
+	source, ok := iterator.credentials.(interface {
+		CredentialRef(uint) (state.CredentialRef, bool)
+		CheckQuotaBudget(state.CredentialRef, state.QuotaBudgetConfig, time.Time) state.QuotaBudgetDecision
+	})
+	decision := state.QuotaBudgetDecision{Reason: "quota_observation_unavailable"}
+	if ok {
+		if ref, exists := source.CredentialRef(meta.ID); exists && ref.IdentityGeneration == meta.IdentityGeneration {
+			decision = source.CheckQuotaBudget(ref, iterator.snapshot.Settings.QuotaBudget, now)
+		}
+	}
+	if !decision.Allowed {
+		if iterator.quotaBudgetDecision.Reason == "" || decision.Reason == "quota_observation_unavailable" {
+			iterator.quotaBudgetDecision = decision
+		}
+	}
+	return decision.Allowed
 }
 
 func (iterator *Iterator) Next() (Selection, error) {

@@ -84,6 +84,9 @@ const rows = computed(() =>
       channelName: account.channelName,
       groupName: account.groupID ? props.groups.get(account.groupID)?.name : undefined,
       plan: observation?.plan || account.channelName,
+      suspended:
+        account.credential.configuredStatus === 'suspended' ||
+        account.credential.state === 'suspended',
       windows,
       remaining: quota,
       tone: window ? quotaTone(window) : ('neutral' as const),
@@ -125,6 +128,13 @@ const rows = computed(() =>
             >{{ row.remaining === undefined ? '—' : n(Math.round(row.remaining)) + '%' }}</span
           >
         </div>
+        <p
+          v-if="row.suspended"
+          class="modern-home-account-note"
+          :title="t('accountCapacity.suspensionHelp')"
+        >
+          {{ t('accountCapacity.suspended') }}
+        </p>
         <div
           v-if="row.windows.length"
           class="modern-home-account-quotas"

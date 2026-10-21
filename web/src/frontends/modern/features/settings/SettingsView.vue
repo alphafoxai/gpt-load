@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { quotaBudgetNumbers, type QuotaBudgetNumber } from '@shared/quota-budget'
 import { useMobileLayout } from '@modern/app/use-mobile-layout'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft, ChevronRight } from '@lucide/vue'
@@ -56,6 +57,12 @@ import SettingsSystemInfo from './SettingsSystemInfo.vue'
 import ErrorRulesEditor from '../config/ErrorRulesEditor.vue'
 import type { HeaderSetting } from './settings-draft'
 import { useSettingsEditor } from './use-settings-editor'
+const capacityKeys = [
+  'credential_concurrency_limit',
+  'credential_rpm_limit',
+  'quota_budget',
+] as const
+const budgetFields = Object.keys(quotaBudgetNumbers) as QuotaBudgetNumber[]
 
 const { t, n } = useI18n()
 const isMobile = useMobileLayout()
@@ -102,6 +109,7 @@ const sectionIDs = [
   'routing',
   'connection',
   'browser',
+  'capacity',
   'maintenance',
   'redaction',
   'experimental',
@@ -133,6 +141,7 @@ const sectionFields: Record<SectionID, readonly SettingKey[]> = {
     'validation_interval',
   ],
   browser: ['cors', 'header_rules', 'response_header_rules'],
+  capacity: capacityKeys,
   maintenance: ['request_log_retention_days', 'models_dev_auto_sync_enabled'],
   interface: [],
   redaction: ['request_redaction'],
@@ -143,6 +152,7 @@ const sectionIcons = {
   routing: Route,
   connection: Cable,
   browser: Globe,
+  capacity: SlidersHorizontal,
   maintenance: Database,
   interface: Monitor,
   redaction: ScanText,
@@ -198,15 +208,23 @@ const discardOpen = ref(false)
 let scrollFrame: number | undefined
 const words = computed(() => state.value.q.toLocaleLowerCase().trim().split(/\s+/u).filter(Boolean))
 const sectionText = (id: SectionID) =>
-  t('settingsForm.sections.' + id) + ' ' + t('settingsForm.sectionHelp.' + id)
+  id === 'capacity'
+    ? t('accountCapacity.title') + ' ' + t('accountCapacity.description')
+    : t('settingsForm.sections.' + id) + ' ' + t('settingsForm.sectionHelp.' + id)
 function matches(key: SettingKey): boolean {
   const section = sectionIDs.find((id) => sectionFields[id].includes(key))!
   const text = [
     key,
-    key === 'error_rules' ? t('errorRules.title') : t('settingsForm.fields.' + key),
+    capacityKeys.includes(key as (typeof capacityKeys)[number])
+      ? t('accountCapacity.' + key)
+      : key === 'error_rules'
+        ? t('errorRules.title')
+        : t('settingsForm.fields.' + key),
     key === 'error_rules'
       ? [t('errorRules.statuses'), t('errorRules.keywords')].join(' ')
-      : t('settingsForm.hints.' + key),
+      : capacityKeys.includes(key as (typeof capacityKeys)[number])
+        ? t('accountCapacity.budgetHelp')
+        : t('settingsForm.hints.' + key),
     sectionText(section),
     key === 'cors'
       ? Object.keys(base.value?.values.cors ?? {})
@@ -395,7 +413,11 @@ async function submit(): Promise<void> {
   if (result !== 'invalid') return
   if (isMobile.value) {
     const section = sectionIDs.find((id) =>
-      sectionFields[id].some((key) => key in fieldErrors.value),
+      sectionFields[id].some((key) =>
+        Object.keys(fieldErrors.value).some(
+          (field) => field === key || field.startsWith(key + '.'),
+        ),
+      ),
     )
     await revealMobileError(section ?? mobileSection.value ?? 'routing')
     return
@@ -500,8 +522,14 @@ onScopeDispose(() => {
             @click="selectSection(id)"
           >
             <span class="modern-settings-nav-label"
-              ><span>{{ t('settingsForm.sections.' + id) }}</span
-              ><small v-if="isMobile">{{ t('settingsForm.sectionHelp.' + id) }}</small></span
+              ><span>{{
+                id === 'capacity' ? t('accountCapacity.title') : t('settingsForm.sections.' + id)
+              }}</span
+              ><small v-if="isMobile">{{
+                id === 'capacity'
+                  ? t('accountCapacity.description')
+                  : t('settingsForm.sectionHelp.' + id)
+              }}</small></span
             ><AppIcon v-if="isMobile" :icon="ChevronRight" size="sm" />
             <AppBadge
               v-if="sectionFields[id].some((key) => changed.includes(key))"
@@ -530,7 +558,9 @@ onScopeDispose(() => {
           @click="backToCategories"
           ><span>{{ t('settingsForm.categories') }}</span
           ><span class="modern-settings-back-current">{{
-            t('settingsForm.sections.' + mobileSection)
+            mobileSection === 'capacity'
+              ? t('accountCapacity.title')
+              : t('settingsForm.sections.' + mobileSection)
           }}</span></AppButton
         >
         <AppCollectionState
@@ -545,7 +575,7 @@ onScopeDispose(() => {
           v-show="!isMobile || mobileSection === id"
           :id="'settings-section-' + id"
           :key="id"
-          :title="t('settingsForm.sections.' + id)"
+          :title="id === 'capacity' ? t('accountCapacity.title') : t('settingsForm.sections.' + id)"
           compact
           class="modern-settings-section"
         >
@@ -789,6 +819,63 @@ onScopeDispose(() => {
                   />
                 </div>
               </div>
+            </template>
+            <template v-else-if="id === 'capacity'">
+              <p class="modern-settings-block">{{ t('accountCapacity.description') }}</p>
+              <p class="modern-settings-block">{{ t('accountCapacity.budgetHelp') }}</p>
+              <SettingItem
+                v-for="key in capacityKeys.filter(matches)"
+                :key="key"
+                v-bind="settingState(key)"
+                :label="t('accountCapacity.' + key)"
+                :hint="
+                  t(
+                    'accountCapacity.' +
+                      (key === 'quota_budget'
+                        ? 'budgetHelp'
+                        : key === 'credential_rpm_limit'
+                          ? 'rpmHelp'
+                          : 'concurrencyHelp'),
+                  )
+                "
+                :control-id="'settings-' + key"
+                class="modern-settings-block"
+                @reset="restore(key)"
+                @undo="undoRestore(key)"
+              >
+                <AppTextField
+                  v-if="key !== 'quota_budget'"
+                  :id="'settings-' + key"
+                  v-model="draft[key]"
+                  :label="t('accountCapacity.' + key)"
+                  inputmode="numeric"
+                  :error="fieldErrors[key]"
+                  :disabled="disabled(key) || resets.has(key)"
+                />
+                <template v-else>
+                  <AppSwitch
+                    id="settings-quota_budget"
+                    v-model="draft.quota_budget.enabled"
+                    :label="t('accountCapacity.enabled')"
+                    :disabled="disabled(key) || resets.has(key)"
+                  />
+                  <div class="modern-settings-number-grid">
+                    <AppTextField
+                      v-for="field in budgetFields"
+                      :key="field"
+                      v-model="draft.quota_budget[field]"
+                      :label="t('accountCapacity.' + field)"
+                      inputmode="numeric"
+                      :error="
+                        fieldErrors['quota_budget.' + field]
+                          ? t('accountCapacity.budgetError')
+                          : undefined
+                      "
+                      :disabled="disabled(key) || resets.has(key)"
+                    />
+                  </div>
+                </template>
+              </SettingItem>
             </template>
             <template v-else-if="id === 'browser'">
               <SettingItem

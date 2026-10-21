@@ -1292,6 +1292,8 @@ func serviceErrorMessageID(
 	apiErr *app_errors.APIError,
 ) string {
 	switch apiErr.Code {
+	case app_errors.ErrCredentialSuspended.Code:
+		return "credential.suspended"
 	case app_errors.ErrIdempotencyKeyRequired.Code:
 		return "idempotency.required"
 	case app_errors.ErrInvalidIdempotencyKey.Code:

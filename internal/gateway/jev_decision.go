@@ -57,9 +57,13 @@ func (handler *Handler) executeJevDecision(ctx context.Context, snapshot *state.
 	}
 	query.AllowedCredentialIDs = allowedIDs
 	query.AllowedCredentialRefs = allowedRefs
-	selection, err := scheduler.New(snapshot, handler.registry, query).Next()
+	iterator := scheduler.New(snapshot, handler.registry, query)
+	selection, err := iterator.Next()
 	if err != nil {
 		decision.Reason = "no_candidate"
+		if budget := iterator.QuotaBudgetDecision(); !budget.Allowed && budget.Reason != "" {
+			decision.Reason = budget.Reason
+		}
 		return decision, result
 	}
 	ref, ok := allowedRefs[selection.CredentialID]
@@ -146,6 +150,12 @@ func (handler *Handler) executeJevDecision(ctx context.Context, snapshot *state.
 		return decision, result
 	}
 	defer release()
+	credentialLease, capacityFailure, _ := handler.acquireCredentialCapacity(ref)
+	if capacityFailure != nil {
+		decision.Reason = capacityFailure.Code
+		return decision, result
+	}
+	defer credentialLease.Release()
 	frozenPricing := handler.freezeAttemptPricing(selection, metadata, true, key.PriceMultiplier)
 	result = handler.forwarder.Forward(decisionCtx, ForwardInput{
 		Dialect: decisionDialect, ObserveUsage: true,
@@ -166,6 +176,10 @@ func (handler *Handler) executeJevDecision(ctx context.Context, snapshot *state.
 		Proxy: effectiveProxy, ProxyFingerprint: proxyFingerprint,
 	})
 	release()
+	if result.DispatchState == execution.DispatchNotSent || result.DispatchState == execution.DispatchLocal {
+		credentialLease.RefundNotDispatched()
+	}
+	credentialLease.Release()
 	result = normalizeUpstreamResultContract(result)
 	decision.Called = result.DispatchState == execution.DispatchMaybeSent
 	if decision.Called {

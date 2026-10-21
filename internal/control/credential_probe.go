@@ -377,6 +377,9 @@ func (s *Service) TestGroupCredential(
 		return CredentialProbeResponse{}, err
 	}
 
+	if err := s.rejectSuspendedCredential(ctx, groupID, credentialID); err != nil {
+		return CredentialProbeResponse{}, err
+	}
 	probe := newCredentialProbeExecutor(s.encryption, s.channelRegistry, s.executor)
 	executed, err := probe.Probe(ctx, group, target, credential.ref)
 	if err != nil {
@@ -435,9 +438,6 @@ func (s *Service) captureCredentialProbe(
 	if err != nil {
 		return state.GroupView{}, groupValidationTarget{}, credentialProbeCredential{}, err
 	}
-	if normalizeGroupConnectionType(groupRow.ConnectionType) == models.ConnectionTypeSubscription {
-		return state.GroupView{}, groupValidationTarget{}, credentialProbeCredential{}, app_errors.ErrForbidden
-	}
 	var credentialRow models.Credential
 	if err := s.db.WithContext(ctx).
 		Where("id = ? AND group_id = ?", credentialID, groupID).
@@ -446,6 +446,12 @@ func (s *Service) captureCredentialProbe(
 			return state.GroupView{}, groupValidationTarget{}, credentialProbeCredential{}, credentialNotFoundError()
 		}
 		return state.GroupView{}, groupValidationTarget{}, credentialProbeCredential{}, app_errors.ParseDBError(err)
+	}
+	if credentialRow.Status == models.CredentialStatusSuspended {
+		return state.GroupView{}, groupValidationTarget{}, credentialProbeCredential{}, app_errors.ErrCredentialSuspended
+	}
+	if normalizeGroupConnectionType(groupRow.ConnectionType) == models.ConnectionTypeSubscription {
+		return state.GroupView{}, groupValidationTarget{}, credentialProbeCredential{}, app_errors.ErrForbidden
 	}
 	view, exists := findRuntimeCredential(s.registry.Snapshot(), credentialID)
 	if err := validateCredentialRuntimeRow(groupRow, credentialRow, view, exists); err != nil {

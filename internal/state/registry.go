@@ -14,8 +14,9 @@ import (
 type CredentialStatus string
 
 const (
-	CredentialStatusActive   CredentialStatus = "active"
-	CredentialStatusDisabled CredentialStatus = "disabled"
+	CredentialStatusActive    CredentialStatus = "active"
+	CredentialStatusDisabled  CredentialStatus = "disabled"
+	CredentialStatusSuspended CredentialStatus = "suspended"
 )
 
 type CredentialAuthState string
@@ -53,6 +54,7 @@ type CredentialEntry struct {
 	quotaRemaining          *float64
 	quotaResetAt            time.Time
 	lastQuotaRejectedAt     time.Time
+	quotaBudgetSamples      [2]quotaBudgetSample
 }
 
 type CredentialMeta struct {
@@ -103,7 +105,7 @@ func ValidateCredentialEntries(entries []CredentialEntry) error {
 		if entry.GroupID == 0 {
 			return fmt.Errorf("credential %d group id is required", entry.ID)
 		}
-		if entry.Status != CredentialStatusActive && entry.Status != CredentialStatusDisabled {
+		if entry.Status != CredentialStatusActive && entry.Status != CredentialStatusDisabled && entry.Status != CredentialStatusSuspended {
 			return fmt.Errorf("credential %d has invalid status %q", entry.ID, entry.Status)
 		}
 		if !entry.AuthState.valid() {
@@ -411,6 +413,9 @@ func (r *CredentialRegistry) UpdateGroupCredentialStatuses(
 		return err
 	}
 	for _, credentialID := range credentialIDs {
+		if r.buckets[groupID][credentialID].Status == CredentialStatusSuspended {
+			continue
+		}
 		r.buckets[groupID][credentialID].Status = status
 		r.scheduling.SyncCredential(runtimeView(r.buckets[groupID][credentialID]))
 	}
@@ -483,7 +488,7 @@ func (r *CredentialRegistry) RemoveGroup(groupID uint) bool {
 }
 
 func (r *CredentialRegistry) SetCredentialStatus(credentialID uint, status CredentialStatus) error {
-	if status != CredentialStatusActive && status != CredentialStatusDisabled {
+	if status != CredentialStatusActive && status != CredentialStatusDisabled && status != CredentialStatusSuspended {
 		return fmt.Errorf("invalid credential status %q", status)
 	}
 	r.mu.Lock()
@@ -491,6 +496,9 @@ func (r *CredentialRegistry) SetCredentialStatus(credentialID uint, status Crede
 	groupID, ok := r.credentialGroups[credentialID]
 	if !ok {
 		return fmt.Errorf("credential %d not found", credentialID)
+	}
+	if r.buckets[groupID][credentialID].Status == CredentialStatusSuspended && status == CredentialStatusActive {
+		return fmt.Errorf("clear suspension before enabling credential")
 	}
 	r.buckets[groupID][credentialID].Status = status
 	r.scheduling.SyncCredential(runtimeView(r.buckets[groupID][credentialID]))
@@ -502,7 +510,7 @@ func (r *CredentialRegistry) UpdateCredentialConfig(
 	status CredentialStatus,
 	weightManual *int,
 ) error {
-	if status != CredentialStatusActive && status != CredentialStatusDisabled {
+	if status != CredentialStatusActive && status != CredentialStatusDisabled && status != CredentialStatusSuspended {
 		return fmt.Errorf("invalid credential status %q", status)
 	}
 	if err := validateManualWeight(fmt.Sprintf("credential %d", credentialID), weightManual); err != nil {
@@ -514,6 +522,9 @@ func (r *CredentialRegistry) UpdateCredentialConfig(
 	entry, ok := r.entryLocked(credentialID)
 	if !ok {
 		return fmt.Errorf("credential %d not found", credentialID)
+	}
+	if entry.Status == CredentialStatusSuspended && status == CredentialStatusActive {
+		return fmt.Errorf("clear suspension before enabling credential")
 	}
 	entry.Status = status
 	entry.WeightManual = clonedWeight
@@ -763,7 +774,7 @@ func (r *CredentialRegistry) SetCredentialQuotaObservation(
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	entry, ok := r.entryLocked(credentialID)
-	if !ok {
+	if !ok || entry.Status == CredentialStatusSuspended {
 		return false
 	}
 	entry.quotaRemaining = cloneFloat(remaining)
@@ -922,7 +933,7 @@ func (r *CredentialRegistry) RestoreRuntimeState(credentialID uint) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	entry, ok := r.entryLocked(credentialID)
-	if !ok {
+	if !ok || entry.Status != CredentialStatusActive {
 		return false
 	}
 	entry.CooldownUntil = time.Time{}
@@ -970,7 +981,7 @@ func (r *CredentialRegistry) Recover(credentialID uint) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	entry, ok := r.entryLocked(credentialID)
-	if !ok {
+	if !ok || entry.Status != CredentialStatusActive {
 		return false
 	}
 	if entry.Blacklisted || entry.FailureCount != 0 {

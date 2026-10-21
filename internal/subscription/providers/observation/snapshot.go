@@ -55,6 +55,7 @@ type QuotaWindow struct {
 	Remaining     *float64 `json:"remaining,omitempty"`
 	Utilization   *float64 `json:"utilization,omitempty"`
 	ResetAtMS     *int64   `json:"reset_at_ms,omitempty"`
+	ObservedAtMS  *int64   `json:"observed_at_ms,omitempty"`
 	WindowSeconds *int64   `json:"window_seconds,omitempty"`
 	ModelIDs      []string `json:"model_ids,omitempty"`
 	State         string   `json:"state"`

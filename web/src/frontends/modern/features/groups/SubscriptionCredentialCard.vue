@@ -134,7 +134,9 @@ useLoadingActivity(() => Boolean(props.pending))
               :label="syncLabel"
               size="xs"
               :loading="pendingAction === 'quota'"
-              :disabled="disabled || row.authState !== 'ready'"
+              :disabled="
+                disabled || !row.enabled || row.state === 'suspended' || row.authState !== 'ready'
+              "
               @click="$emit('action', 'quota')"
             />
             <AppBadge
@@ -151,6 +153,9 @@ useLoadingActivity(() => Boolean(props.pending))
       </div>
     </header>
     <div class="modern-subscription-card-body">
+      <p v-if="row.configuredStatus === 'suspended' || row.state === 'suspended'">
+        {{ t('accountCapacity.suspensionHelp') }}
+      </p>
       <div
         v-if="channel?.quotaObservation || observation?.windows.length"
         class="modern-subscription-card-quota"
@@ -171,7 +176,9 @@ useLoadingActivity(() => Boolean(props.pending))
               size="xxs"
               :icon="syncIcon"
               :loading="pendingAction === 'quota'"
-              :disabled="disabled || row.authState !== 'ready'"
+              :disabled="
+                disabled || !row.enabled || row.state === 'suspended' || row.authState !== 'ready'
+              "
               @click="$emit('action', 'quota')"
               >{{ t('credentialCards.syncQuota') }}</AppButton
             >
@@ -240,7 +247,7 @@ useLoadingActivity(() => Boolean(props.pending))
           size="xxs"
           :model-value="row.enabled"
           :label="t('groups.edit.enabled')"
-          :disabled="disabled"
+          :disabled="disabled || row.configuredStatus === 'suspended' || row.state === 'suspended'"
           @update:model-value="$emit('toggle', $event)"
         />
       </div>
