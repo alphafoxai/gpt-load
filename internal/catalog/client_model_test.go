@@ -95,6 +95,27 @@ func TestCodexClientModelUsesExactTemplateAndFourOverrides(t *testing.T) {
 	assertCodexInstructionFields(t, model)
 }
 
+func TestMirasimFlashAdvertisesOneMillionContext(t *testing.T) {
+	model, automatic, effective, err := BuildCodexClientModel("mira/v4.1-flash", 0, ClientModelOverrides{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if automatic.ContextWindow == nil || *automatic.ContextWindow != 1_000_000 ||
+		effective.ContextWindow == nil || *effective.ContextWindow != 1_000_000 ||
+		model["context_window"] != int64(1_000_000) || model["max_context_window"] != int64(1_000_000) {
+		t.Fatalf("flash context = profile %#v model context %#v max %#v", automatic, model["context_window"], model["max_context_window"])
+	}
+	// 管理面覆盖仍然优先：一台机器可以把它改回别的窗口。
+	narrow := int64(128_000)
+	overridden, _, effective, err := BuildCodexClientModel("mira/v4.1-flash", 0, ClientModelOverrides{ContextWindow: &narrow})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if effective.ContextWindow == nil || *effective.ContextWindow != narrow || overridden["context_window"] != narrow {
+		t.Fatalf("override lost: effective %#v model %#v", effective, overridden["context_window"])
+	}
+}
+
 func TestCodexClientModelFallsBackToGPT55(t *testing.T) {
 	model, automatic, effective, err := BuildCodexClientModel("vendor/new-model", 3, ClientModelOverrides{})
 	if err != nil {
