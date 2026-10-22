@@ -58,21 +58,21 @@ func (e *Executor) Execute(ctx context.Context, credential Storage, request Exec
 	credential = applyRelayOverride(credential, request.BaseURL)
 	response, err := clientFor(credential, request).Do(ctx, http.MethodPost, route.Path, nil, requestHeaders(request.Headers, route.Format), body)
 	if err != nil {
-		return ExecuteResponse{}, err
+		return ExecuteResponse{StatusCode: response.StatusCode, Headers: cloneHeader(response.Header), UpstreamRequestPath: route.Path}, err
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return ExecuteResponse{}, NewStatusError(response.StatusCode, response.Body, response.Header)
+		return ExecuteResponse{StatusCode: response.StatusCode, Headers: cloneHeader(response.Header), UpstreamRequestPath: route.Path}, NewStatusError(response.StatusCode, response.Body, response.Header)
 	}
 	upstream := response.Body
 	if route.Format == sdktranslator.FormatCodex {
 		upstream, err = codexNonStreamPayload(response.Body)
 		if err != nil {
-			return ExecuteResponse{}, err
+			return ExecuteResponse{StatusCode: response.StatusCode, Headers: cloneHeader(response.Header), UpstreamRequestPath: route.Path}, err
 		}
 	}
 	payload, err := translateNonStream(ctx, route.Format, responseFormat(request.Format), normalizeModel(request.Model), request.OriginalRequest, body, upstream)
 	if err != nil {
-		return ExecuteResponse{}, err
+		return ExecuteResponse{StatusCode: response.StatusCode, Headers: cloneHeader(response.Header), UpstreamRequestPath: route.Path}, err
 	}
 	headers := cloneHeader(response.Header)
 	headers.Set("Content-Type", "application/json")
@@ -90,7 +90,7 @@ func (e *Executor) ExecuteStream(ctx context.Context, credential Storage, reques
 	credential = applyRelayOverride(credential, request.BaseURL)
 	response, stream, err := clientFor(credential, request).DoStream(ctx, http.MethodPost, route.Path, nil, requestHeaders(request.Headers, route.Format), body)
 	if err != nil {
-		return ExecuteResponse{}, nil, err
+		return ExecuteResponse{StatusCode: response.StatusCode, Headers: cloneHeader(response.Header), UpstreamRequestPath: route.Path}, nil, err
 	}
 	headers := cloneHeader(response.Header)
 	headers.Set("Content-Type", "text/event-stream")
@@ -119,10 +119,10 @@ func (e *Executor) CountTokens(ctx context.Context, credential Storage, request 
 	credential = applyRelayOverride(credential, request.BaseURL)
 	response, err := clientFor(credential, request).Do(ctx, http.MethodPost, "/v1/messages/count_tokens", nil, requestHeaders(request.Headers, sdktranslator.FormatClaude), body)
 	if err != nil {
-		return ExecuteResponse{}, err
+		return ExecuteResponse{StatusCode: response.StatusCode, Headers: cloneHeader(response.Header), UpstreamRequestPath: "/v1/messages/count_tokens"}, err
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return ExecuteResponse{}, NewStatusError(response.StatusCode, response.Body, response.Header)
+		return ExecuteResponse{StatusCode: response.StatusCode, Headers: cloneHeader(response.Header), UpstreamRequestPath: "/v1/messages/count_tokens"}, NewStatusError(response.StatusCode, response.Body, response.Header)
 	}
 	payload := append([]byte(nil), response.Body...)
 	output := responseFormat(request.Format)

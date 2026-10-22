@@ -68,6 +68,50 @@ func TestServableModelsDropDatedTwin(t *testing.T) {
 	}
 }
 
+// The relay explains a refusal in the error body. Reading it is what turns a
+// bare 503 into a diagnosable failure.
+func TestStatusErrorReadsTheRelayMessage(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			name: "anthropic style error object",
+			body: `{"error":{"message":"平台暂时无法提供 claude-opus-5-5，请稍后重试或换用其他模型。","type":"api_error"},"type":"error"}`,
+			want: "平台暂时无法提供 claude-opus-5-5，请稍后重试或换用其他模型。",
+		},
+		{
+			name: "flat message",
+			body: `{"message":"  spaced   out  "}`,
+			want: "  spaced   out  ",
+		},
+		{
+			name: "a body with no message yields nothing",
+			body: `<html>bad gateway</html>`,
+			want: "",
+		},
+		{
+			name: "an empty body yields nothing",
+			body: "",
+			want: "",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			status := NewStatusError(http.StatusServiceUnavailable, []byte(test.body), http.Header{})
+			if got := status.UpstreamMessage(); got != test.want {
+				t.Fatalf("UpstreamMessage() = %q, want %q", got, test.want)
+			}
+		})
+	}
+	var missing *StatusError
+	if got := missing.UpstreamMessage(); got != "" {
+		t.Fatalf("nil status error message = %q", got)
+	}
+}
+
 func TestHTTP1TransportOffersOnlyHTTP11InALPN(t *testing.T) {
 	t.Parallel()
 	bases := map[string]*http.Transport{

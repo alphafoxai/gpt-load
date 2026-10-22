@@ -9,9 +9,11 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"gpt-load/internal/channel"
 	"gpt-load/internal/execution"
+	platformredact "gpt-load/internal/platform/redact"
 	"gpt-load/internal/protocol"
 	"gpt-load/internal/subscription/providers/mirasim"
 )
@@ -192,7 +194,7 @@ func (*mirasimProviderBridge) ClassifyError(
 	}
 	evidence := &execution.ErrorEvidence{
 		Kind: kind, StatusCode: status, Code: code,
-		Summary: mirasimProviderErrorSummary(status),
+		Summary: mirasimErrorSummary(status, err, credential),
 	}
 	var retry interface{ RetryAfter() *time.Duration }
 	if errors.As(err, &retry) && retry != nil {
@@ -217,6 +219,43 @@ func (*mirasimProviderBridge) ClassifyError(
 	}
 	annotateProviderErrorEvidence(evidence, err)
 	return status, evidence
+}
+
+// mirasimErrorSummary keeps the generic Mirasim label that callers and the UI
+// group on, and appends the relay's own message so a failure is diagnosable
+// from the log alone. A 5xx otherwise reports the host as broken with no reason.
+func mirasimErrorSummary(status int, err error, credential providerCredential) string {
+	summary := mirasimProviderErrorSummary(status)
+	detail := mirasimUpstreamMessage(err, credential)
+	switch {
+	case detail == "":
+		return summary
+	case summary == "":
+		return detail
+	}
+	joined := summary + ": " + detail
+	if utf8.RuneCountInString(joined) > execution.MaxErrorSummaryLength {
+		joined = string([]rune(joined)[:execution.MaxErrorSummaryLength])
+	}
+	return joined
+}
+
+// mirasimUpstreamMessage is the relay's own explanation, redacted and bounded.
+func mirasimUpstreamMessage(err error, credential providerCredential) string {
+	var messaged interface{ UpstreamMessage() string }
+	if !errors.As(err, &messaged) || messaged == nil {
+		return ""
+	}
+	detail := strings.TrimSpace(messaged.UpstreamMessage())
+	if detail == "" {
+		return ""
+	}
+	values := []string(nil)
+	if credential != nil {
+		values = credential.redactionValues()
+	}
+	detail = platformredact.New().String(detail, values...)
+	return strings.Join(strings.Fields(strings.ToValidUTF8(detail, " ")), " ")
 }
 
 func mirasimProviderErrorSummary(status int) string {
