@@ -170,6 +170,13 @@ func minimumNumbers(expected int) int {
 	return max(80, int(math.Ceil(float64(expected)*0.55)))
 }
 
+// MinimumNumbers reports how many in-range numbers an answer must contain before
+// it is scored. The board's probe judges an answer with it too, so an answer is
+// never accepted by the probe and then dropped by the analysis.
+func MinimumNumbers(expected int) int {
+	return minimumNumbers(expected)
+}
+
 // ParseNumbers keeps the longest run of integers in 1..355, dropping numbers
 // that sit inside prose. ASCII digits and Unicode letters match the upstream
 // browser implementation.

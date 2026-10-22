@@ -83,11 +83,14 @@ type Service struct {
 	degradeOnce                       sync.Once
 	degradeWrite                      sync.Mutex
 	now                               func() time.Time
-	publishSnapshot                   func(state.CompileInput) (*state.ConfigSnapshot, error)
-	reconcileRegistryGroup            func(uint, []state.CredentialEntry) (bool, error)
-	applyBatchRegistryMutation        func(uint, []uint, CredentialBatchAction) error
-	restoreBatchRegistryEntries       func(uint, []state.CredentialEntry) error
-	beforeAdvanceOperationStage       func(
+	// degradeRetryWait sleeps before a retried degradation probe. Tests replace
+	// it so the probe's backoff does not cost real seconds.
+	degradeRetryWait            func(context.Context, time.Duration) error
+	publishSnapshot             func(state.CompileInput) (*state.ConfigSnapshot, error)
+	reconcileRegistryGroup      func(uint, []state.CredentialEntry) (bool, error)
+	applyBatchRegistryMutation  func(uint, []uint, CredentialBatchAction) error
+	restoreBatchRegistryEntries func(uint, []state.CredentialEntry) error
+	beforeAdvanceOperationStage func(
 		context.Context,
 		*models.ControlOperation,
 		operationStage,
@@ -270,6 +273,7 @@ func NewService(
 			return capability.Consume(ctx, credential, target, requestID)
 		},
 		now:                   time.Now,
+		degradeRetryWait:      sleepDegradeRetry,
 		operationRecoveryWake: make(chan struct{}, 1),
 		observationFlights:    make(map[observationFlightKey]*observationFlight),
 		observationSemaphore:  make(chan struct{}, 1),
