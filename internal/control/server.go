@@ -17,6 +17,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"gpt-load/internal/channel"
+	"gpt-load/internal/mirasimstatus"
 	"gpt-load/internal/outboundproxy"
 	"gpt-load/internal/platform/config"
 	app_errors "gpt-load/internal/platform/errors"
@@ -44,6 +45,7 @@ type Server struct {
 	startedAt         time.Time
 	now               func() time.Time
 	releaseChecker    ReleaseUpdateChecker
+	mirasimStatus     mirasimstatus.Reader
 }
 
 const maxControlJSONBodyBytes int64 = 32 << 20
@@ -82,6 +84,11 @@ func NewServerWithReleaseUpdateChecker(
 	server := NewServer(cfg, service)
 	server.releaseChecker = releaseChecker
 	return server
+}
+
+// SetMirasimStatusReader injects the independent public status reader.
+func (s *Server) SetMirasimStatusReader(reader mirasimstatus.Reader) {
+	s.mirasimStatus = reader
 }
 
 func (s *Server) handleGetSettings(c *gin.Context) {

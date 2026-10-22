@@ -221,7 +221,7 @@ func (c *Client) DoStream(ctx context.Context, method, requestPath string, query
 			if response.StatusCode < 200 || response.StatusCode >= 300 {
 				responseBody, _ := io.ReadAll(io.LimitReader(response.Body, maxErrorBody+1))
 				_ = response.Body.Close()
-				return HTTPResult{}, nil, NewStatusError(response.StatusCode, responseBody, response.Header)
+				return HTTPResult{StatusCode: response.StatusCode, Header: response.Header.Clone()}, nil, NewStatusError(response.StatusCode, responseBody, response.Header)
 			}
 			return HTTPResult{StatusCode: response.StatusCode, Header: response.Header.Clone()}, response.Body, nil
 		}
@@ -813,6 +813,30 @@ func (e *StatusError) ErrorCode() string {
 		return ""
 	}
 	return refreshErrorCode(e.body)
+}
+
+// UpstreamMessage is the message a relay error body carries. The relay answers
+// a request it will not serve with {"error":{"message":...}}, and that text is
+// the only thing that says why; a status code alone reads as a host fault.
+func (e *StatusError) UpstreamMessage() string {
+	if e == nil || len(e.body) == 0 {
+		return ""
+	}
+	var payload struct {
+		Error struct {
+			Message string `json:"message"`
+		} `json:"error"`
+		Message string `json:"message"`
+	}
+	if json.Unmarshal(e.body, &payload) != nil {
+		return ""
+	}
+	// Return the complete decoded text. The reporting boundary must redact
+	// known secrets before normalizing whitespace or truncating the message.
+	if strings.TrimSpace(payload.Error.Message) != "" {
+		return payload.Error.Message
+	}
+	return payload.Message
 }
 
 func (e *StatusError) RetryAfter() *time.Duration {

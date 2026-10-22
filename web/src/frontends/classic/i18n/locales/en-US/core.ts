@@ -1,5 +1,7 @@
+import { enUS as mirasimStatus } from '@shared/mirasim-status/messages'
 import { enUS as proxies } from '@shared/proxies/messages'
 export default {
+  mirasimStatus,
   proxies,
   concurrency: {
     label: 'Concurrency limit',

@@ -1,3 +1,4 @@
+import { jaJP as mirasimStatus } from '@shared/mirasim-status/messages'
 import { jaJP as proxies } from '@shared/proxies/messages'
 import { jaJP as concurrency } from './concurrency'
 import { jaJP as requestRedaction } from './request-redaction'
@@ -24,6 +25,7 @@ import { jaJP as autoModel } from './auto-model'
 import { jaJP as subscriptions } from './subscriptions'
 
 export default {
+  mirasimStatus,
   proxies,
   concurrency,
   requestRedaction,
@@ -108,6 +110,7 @@ export default {
     },
   },
   pages: {
+    mirasimStatus: { title: mirasimStatus.title },
     proxies: { title: proxies.title },
     home: { title: '概要' },
     groups: { title: 'グループ' },

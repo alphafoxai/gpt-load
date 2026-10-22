@@ -1,5 +1,7 @@
+import { jaJP as mirasimStatus } from '@shared/mirasim-status/messages'
 import { jaJP as proxies } from '@shared/proxies/messages'
 export default {
+  mirasimStatus,
   proxies,
   concurrency: {
     label: '同時実行数の上限',

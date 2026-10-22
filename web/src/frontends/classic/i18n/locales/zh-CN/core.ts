@@ -1,5 +1,7 @@
+import { zhCN as mirasimStatus } from '@shared/mirasim-status/messages'
 import { zhCN as proxies } from '@shared/proxies/messages'
 export default {
+  mirasimStatus,
   proxies,
   concurrency: {
     label: '并发上限',
