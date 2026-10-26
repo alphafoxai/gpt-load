@@ -87,6 +87,7 @@ type requestRecorder struct {
 	now                  func() time.Time
 	redactor             *redact.Redactor
 	emitted              bool
+	requestBody          []byte
 
 	pendingRetry int
 }
@@ -170,7 +171,17 @@ func (recorder *requestRecorder) emit() {
 		Operation:             recorder.operation,
 		Attempts:              append([]telemetry.Attempt(nil), recorder.attempts...),
 		Usage:                 recorder.usage,
+		RequestBody:           recorder.requestBody,
 	})
+}
+
+// recordRequestBody 为开启请求内容记录的访问密钥保留客户端原始请求体。
+// 网关内请求体只读，直接引用而不复制；截断与落库由请求日志异步完成。
+func (recorder *requestRecorder) recordRequestBody(key state.AccessKeyView, body []byte) {
+	if recorder == nil || !key.RecordRequestBody || len(body) == 0 {
+		return
+	}
+	recorder.requestBody = body
 }
 
 func (recorder *requestRecorder) freezeSensitiveInputErrorSummaries() {
@@ -711,6 +722,43 @@ func (recorder *requestRecorder) completeCanceled(
 	recorder.bindUsage(attemptIndex, usage.Result{}, false)
 }
 
+// completeTruncated 记录一次重试用尽后仍交付给客户端的截断流。响应以 HTTP 200 写出
+// 且带着真实字节，但上游在终态事件之前断开，客户端拿到的是半截回答：必须记成
+// incomplete 并保留原因，不能因为状态码是 2xx 就记成成功。
+func (recorder *requestRecorder) completeTruncated(
+	result UpstreamResult,
+	decision health.Decision,
+	upstreamModel string,
+	attemptIndex int,
+) {
+	if recorder == nil {
+		return
+	}
+	recorder.finishTiming()
+	code := upstreamErrorCode(result, decision.Category)
+	if code == "" {
+		code = health.StreamTruncatedBeforeContentCode
+	}
+	summary := result.ErrorSummary
+	if attemptIndex >= 0 && attemptIndex < len(recorder.attempts) && recorder.attempts[attemptIndex].ErrorSummary != "" {
+		summary = recorder.attempts[attemptIndex].ErrorSummary
+	}
+	if summary == "" {
+		summary = fixedErrorSummary(code)
+	}
+	recorder.outcome = requestOutcome{
+		status:                telemetry.RequestStatusIncomplete,
+		statusCode:            result.StatusCode,
+		errorCode:             code,
+		errorSummary:          summary,
+		upstreamModel:         upstreamModel,
+		upstreamReportedModel: result.UpstreamReportedModel,
+		responseModelObserved: result.ResponseModelObserved,
+		responseModelMismatch: result.ResponseModelMismatch,
+	}
+	recorder.bindUsage(attemptIndex, result.Usage, true)
+}
+
 func (recorder *requestRecorder) completeDownstreamWrite(status int) {
 	if recorder == nil {
 		return
@@ -779,6 +827,10 @@ func telemetryAction(decision health.Decision) telemetry.Action {
 }
 
 func upstreamErrorCode(result UpstreamResult, category health.FailureCategory) string {
+	// 可重放的截断优先：终结尝试行不一定带 ExecutionError，标记本身才是权威判据。
+	if result.TruncatedBeforeCommit {
+		return health.StreamTruncatedBeforeContentCode
+	}
 	if result.ExecutionError != nil {
 		switch result.ExecutionError.Code {
 		case "credential_decrypt_failed",
@@ -787,7 +839,8 @@ func upstreamErrorCode(result UpstreamResult, category health.FailureCategory) s
 			"group_proxy_prepare_failed",
 			"server_is_overloaded",
 			"rate_limit_exceeded",
-			health.EmptyResponseCode:
+			health.EmptyResponseCode,
+			health.StreamTruncatedBeforeContentCode:
 			return result.ExecutionError.Code
 		}
 	}
@@ -859,6 +912,8 @@ func fixedErrorSummary(code string) string {
 		return "Upstream stream timed out while idle."
 	case health.EmptyResponseCode:
 		return "Upstream completed without producing any content."
+	case health.StreamTruncatedBeforeContentCode:
+		return "Upstream stream ended before any visible content."
 	case "downstream_write_failed":
 		return "The downstream response could not be completed."
 	case "internal_error":

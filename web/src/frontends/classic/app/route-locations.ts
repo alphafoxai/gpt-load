@@ -13,6 +13,7 @@ const sharedPageRouteNames = {
   models: 'models',
   settings: 'settings',
   proxies: 'proxies',
+  mirasimStatus: 'mirasim-status',
 } as const
 
 function validateSharedPageRouteNames(): void {

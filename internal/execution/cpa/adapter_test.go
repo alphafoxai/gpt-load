@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"mime"
 	"mime/multipart"
@@ -1033,7 +1034,7 @@ func TestAdapterStreamsEverySupportedClientProtocolThroughCPA(t *testing.T) {
 				}
 				return nil
 			})
-			if result.Error != nil || fake.calls != 1 || fake.request.Format != test.wantFormat || result.UpstreamProtocol != test.wantAPI {
+			if result.Error != nil || result.Model != "" || fake.calls != 1 || fake.request.Format != test.wantFormat || result.UpstreamProtocol != test.wantAPI {
 				t.Fatalf("result=%#v calls=%d request=%#v", result, fake.calls, fake.request)
 			}
 			if strings.Join(data, "") != strings.Join(test.wantData, "") {
@@ -1151,7 +1152,8 @@ func TestAdapterFinishesDeliveredChatStreamAfterUpstreamEOF(t *testing.T) {
 		!result.ResponseStarted || result.StatusCode != http.StatusOK {
 		t.Fatalf("result = %#v", result)
 	}
-	if len(data) != 2 || !strings.Contains(data[0], `"content":"hi"`) || data[1] != "data: [DONE]\n\n" {
+	if len(data) != 3 || !strings.Contains(data[0], `"content":"hi"`) ||
+		!strings.Contains(data[1], `"code":"upstream_stream_truncated"`) || data[2] != "data: [DONE]\n\n" {
 		t.Fatalf("stream data = %q", data)
 	}
 }
@@ -1188,7 +1190,6 @@ func TestGatewayKeepsDeliveredChatBodyAfterUpstreamEOF(t *testing.T) {
 	}
 }
 
-
 func TestAdapterKeepsUpstreamEOFBeforeAnyData(t *testing.T) {
 	adapter, _, _, keyService, row := newAdapterFixture(t, credentialJSON("access", "refresh", time.Now().Add(time.Hour)))
 	chunks := make(chan codex.ExecuteStreamChunk, 1)
@@ -1211,7 +1212,6 @@ func TestAdapterKeepsUpstreamEOFBeforeAnyData(t *testing.T) {
 		t.Fatalf("result = %#v, data = %d", result, data)
 	}
 }
-
 
 func TestAdapterDoesNotCompleteStreamAfterContextCancellation(t *testing.T) {
 	adapter, _, _, keyService, row := newAdapterFixture(t, credentialJSON("access", "refresh", time.Now().Add(time.Hour)))
@@ -1334,10 +1334,10 @@ func TestAdapterRewritesStreamModelAliasForEveryProtocol(t *testing.T) {
 		operation execution.Operation
 		payload   string
 	}{
-		{name: "OpenAI Chat", protocol: protocol.OpenAICompletions, operation: execution.OperationChatCompletion, payload: `{"model":"upstream-model","choices":[{"finish_reason":"stop"}]}`},
-		{name: "OpenAI Responses", protocol: protocol.OpenAIResponses, operation: execution.OperationResponsesCreate, payload: "data: {\"type\":\"response.completed\",\"response\":{\"model\":\"upstream-model\"}}\n\n"},
-		{name: "Anthropic", protocol: protocol.Anthropic, operation: execution.OperationChatCompletion, payload: "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"model\":\"upstream-model\"}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}"},
-		{name: "Gemini", protocol: protocol.Gemini, operation: execution.OperationChatCompletion, payload: `{"modelVersion":"upstream-model","candidates":[{"finishReason":"STOP"}]}`},
+		{name: "OpenAI Chat", protocol: protocol.OpenAICompletions, operation: execution.OperationChatCompletion, payload: `{"model":"reported-model","choices":[{"finish_reason":"stop"}]}`},
+		{name: "OpenAI Responses", protocol: protocol.OpenAIResponses, operation: execution.OperationResponsesCreate, payload: "data: {\"type\":\"response.completed\",\"response\":{\"model\":\"reported-model\"}}\n\n"},
+		{name: "Anthropic", protocol: protocol.Anthropic, operation: execution.OperationChatCompletion, payload: "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"model\":\"reported-model\"}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}"},
+		{name: "Gemini", protocol: protocol.Gemini, operation: execution.OperationChatCompletion, payload: `{"modelVersion":"reported-model","candidates":[{"finishReason":"STOP"}]}`},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -1362,10 +1362,187 @@ func TestAdapterRewritesStreamModelAliasForEveryProtocol(t *testing.T) {
 				}
 				return nil
 			})
-			if result.Error != nil || !strings.Contains(wire.String(), "public-model") || strings.Contains(wire.String(), "upstream-model") {
+			if result.Error != nil || result.Model != "reported-model" || !strings.Contains(wire.String(), "public-model") || strings.Contains(wire.String(), "reported-model") {
 				t.Fatalf("result = %#v, wire = %q", result, wire.String())
 			}
 		})
+	}
+}
+
+type byteChunkProviderBridge struct {
+	providerBridge
+	chunks <-chan providerStreamChunk
+}
+
+func (bridge byteChunkProviderBridge) ExecuteStream(context.Context, string, providerCredential, providerRequest) (*providerStreamResponse, error) {
+	return &providerStreamResponse{Headers: http.Header{"Content-Type": {"text/event-stream"}}, Chunks: bridge.chunks, RawSSE: true, UpstreamProtocol: protocol.Anthropic}, nil
+}
+
+// Mira 的 HTTP Read 可以把一个合法 SSE JSON 从任意字节处切开；它不是逻辑事件边界。
+func TestAdapterPreservesTransportFragmentedAnthropicStream(t *testing.T) {
+	const original = "event: message_start\r\ndata: {\"type\":\"message_start\",\"message\":{\"model\":\"upstream-model\"}}\r\n\r\n" +
+		"event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"完整答案\"}}\n\n" +
+		"event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+	for _, alias := range []bool{false, true} {
+		t.Run(fmt.Sprintf("alias=%v", alias), func(t *testing.T) {
+			adapter, _, _, service, row := newAdapterFixture(t, credentialJSON("access", "refresh", time.Now().Add(time.Hour)))
+			chunks := make(chan providerStreamChunk, len(original))
+			for i := range []byte(original) {
+				chunks <- providerStreamChunk{Payload: []byte(original[i : i+1])}
+			}
+			close(chunks)
+			adapter.providers[channel.ProviderCodex] = byteChunkProviderBridge{providerBridge: adapter.providers[channel.ProviderCodex], chunks: chunks}
+			spec := validSpec(t, row, service)
+			spec.ClientProtocol, spec.RouteMode = protocol.Anthropic, execution.RouteConverted
+			spec.Operation = execution.OperationChatCompletion
+			spec.Path = "/v1/messages"
+			spec.Body = []byte(`{"model":"upstream-model","max_tokens":64,"messages":[{"role":"user","content":"hello"}]}`)
+			spec.ClientModel, spec.UpstreamModel = "upstream-model", "upstream-model"
+			if alias {
+				spec.ClientModel = "public-model"
+			}
+			var wire bytes.Buffer
+			result := adapter.ExecuteStream(t.Context(), spec, func(event execution.StreamEvent) error {
+				if event.Kind == execution.StreamEventData {
+					wire.Write(event.Data)
+				}
+				return nil
+			})
+			if result.Error != nil {
+				t.Fatalf("transport fragmentation rejected a valid stream: %+v", result.Error)
+			}
+			if !alias {
+				if wire.String() != original {
+					t.Fatalf("transport bytes changed: got %q want %q", wire.String(), original)
+				}
+				return
+			}
+			eventEnd := strings.Index(wire.String(), "\r\n\r\n")
+			originalEnd := strings.Index(original, "\r\n\r\n")
+			if eventEnd < 0 || wire.String()[eventEnd+4:] != original[originalEnd+4:] {
+				t.Fatalf("alias rewrite changed subsequent events: %q", wire.String())
+			}
+			var start struct {
+				Type    string `json:"type"`
+				Message struct {
+					Model string `json:"model"`
+				} `json:"message"`
+			}
+			data := strings.TrimPrefix(wire.String()[:eventEnd], "event: message_start\r\ndata: ")
+			if err := json.Unmarshal([]byte(data), &start); err != nil || start.Type != "message_start" || start.Message.Model != "public-model" {
+				t.Fatalf("fragmented model alias was not restored: %q, %v", data, err)
+			}
+		})
+	}
+}
+
+func TestAdapterAttributesRawSSEFailureToUpstream(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		payload  string
+		wantKind execution.ErrorKind
+	}{
+		{name: "transport cuts inside JSON", payload: "event: content_block_delta\ndata: {\"type\":", wantKind: execution.ErrorKindTransport},
+		{name: "invalid complete JSON event", payload: "event: message_start\ndata: {\"type\":\"message_start\",\"message\":1}\n\n", wantKind: execution.ErrorKindProvider},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			adapter, _, _, service, row := newAdapterFixture(t, credentialJSON("access", "refresh", time.Now().Add(time.Hour)))
+			chunks := make(chan providerStreamChunk, 1)
+			chunks <- providerStreamChunk{Payload: []byte(tc.payload)}
+			close(chunks)
+			adapter.providers[channel.ProviderCodex] = byteChunkProviderBridge{providerBridge: adapter.providers[channel.ProviderCodex], chunks: chunks}
+			spec := validSpec(t, row, service)
+			spec.ClientProtocol, spec.RouteMode, spec.Operation = protocol.Anthropic, execution.RouteConverted, execution.OperationChatCompletion
+			spec.ClientModel, spec.UpstreamModel = "public-model", "upstream-model"
+			spec.Path = "/v1/messages"
+			spec.Body = []byte(`{"model":"public-model","max_tokens":64,"messages":[{"role":"user","content":"hello"}]}`)
+			var wire bytes.Buffer
+			result := adapter.ExecuteStream(t.Context(), spec, func(event execution.StreamEvent) error {
+				if event.Kind == execution.StreamEventData {
+					wire.Write(event.Data)
+				}
+				return nil
+			})
+			if !result.ResponseStarted || result.StatusCode != http.StatusOK || result.Error == nil || result.Error.Kind != tc.wantKind || wire.Len() != 0 {
+				t.Fatalf("failure misclassified or corrupt event forwarded: result=%+v error=%+v body=%q", result, result.Error, wire.String())
+			}
+			if tc.wantKind == execution.ErrorKindProvider && (result.Error.OriginHint != execution.ErrorOriginUpstream || result.Error.Code != "upstream_protocol_error") {
+				t.Fatalf("invalid complete upstream event blamed local rewrite: %+v", result.Error)
+			}
+		})
+	}
+}
+
+func TestAdapterKeepsStreamAfterRawEventWithoutModel(t *testing.T) {
+	adapter, _, _, service, row := newAdapterFixture(t, credentialJSON("access", "refresh", time.Now().Add(time.Hour)))
+	chunks := make(chan providerStreamChunk, 2)
+	chunks <- providerStreamChunk{Payload: []byte("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"hidden\"}}\n\n")}
+	chunks <- providerStreamChunk{Payload: []byte("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"ok\"}}\n\n")}
+	close(chunks)
+	adapter.providers[channel.ProviderCodex] = byteChunkProviderBridge{providerBridge: adapter.providers[channel.ProviderCodex], chunks: chunks}
+	spec := validSpec(t, row, service)
+	spec.ClientProtocol, spec.RouteMode, spec.Operation = protocol.Anthropic, execution.RouteConverted, execution.OperationChatCompletion
+	spec.ClientModel, spec.UpstreamModel = "public-model", "upstream-model"
+	spec.Path = "/v1/messages"
+	spec.Body = []byte(`{"model":"public-model","max_tokens":64,"messages":[{"role":"user","content":"hello"}]}`)
+	var wire bytes.Buffer
+	result := adapter.ExecuteStream(t.Context(), spec, func(event execution.StreamEvent) error {
+		if event.Kind == execution.StreamEventData {
+			wire.Write(event.Data)
+		}
+		return nil
+	})
+	if result.Error != nil || !strings.Contains(wire.String(), `"text":"ok"`) || !strings.Contains(wire.String(), `"thinking":"hidden"`) {
+		t.Fatalf("model-free event stopped a later delta: %+v body=%q", result.Error, wire.String())
+	}
+}
+
+func TestAdapterSkipsUnrewritableEventAfterOutput(t *testing.T) {
+	adapter, _, _, service, row := newAdapterFixture(t, credentialJSON("access", "refresh", time.Now().Add(time.Hour)))
+	chunks := make(chan providerStreamChunk, 3)
+	chunks <- providerStreamChunk{Payload: []byte("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"ok\"}}\n\n")}
+	chunks <- providerStreamChunk{Payload: []byte("event: message_start\ndata: {\"type\":\"message_start\",\"message\":1}\n\n")}
+	chunks <- providerStreamChunk{Payload: []byte("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")}
+	close(chunks)
+	adapter.providers[channel.ProviderCodex] = byteChunkProviderBridge{providerBridge: adapter.providers[channel.ProviderCodex], chunks: chunks}
+	spec := validSpec(t, row, service)
+	spec.ClientProtocol, spec.RouteMode, spec.Operation = protocol.Anthropic, execution.RouteConverted, execution.OperationChatCompletion
+	spec.ClientModel, spec.UpstreamModel = "public-model", "upstream-model"
+	spec.Path = "/v1/messages"
+	spec.Body = []byte(`{"model":"public-model","max_tokens":64,"messages":[{"role":"user","content":"hello"}]}`)
+	var wire bytes.Buffer
+	result := adapter.ExecuteStream(t.Context(), spec, func(event execution.StreamEvent) error {
+		if event.Kind == execution.StreamEventData {
+			wire.Write(event.Data)
+		}
+		return nil
+	})
+	if result.Error != nil || !strings.Contains(wire.String(), `"text":"ok"`) || !strings.Contains(wire.String(), "message_stop") || strings.Contains(wire.String(), `"message":1`) {
+		t.Fatalf("later terminal was dropped with the bad event: %+v body=%q", result.Error, wire.String())
+	}
+}
+
+func TestAdapterForwardsStrippedTerminalAfterOutput(t *testing.T) {
+	adapter, _, _, service, row := newAdapterFixture(t, credentialJSON("access", "refresh", time.Now().Add(time.Hour)))
+	chunks := make(chan providerStreamChunk, 2)
+	chunks <- providerStreamChunk{Payload: []byte("data: {\"id\":\"chatcmpl_1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n")}
+	chunks <- providerStreamChunk{Payload: []byte("data: {\"model\":1,\"choices\":[{\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n")}
+	close(chunks)
+	adapter.providers[channel.ProviderCodex] = byteChunkProviderBridge{providerBridge: adapter.providers[channel.ProviderCodex], chunks: chunks}
+	spec := validSpec(t, row, service)
+	spec.ClientProtocol, spec.RouteMode, spec.Operation = protocol.OpenAICompletions, execution.RouteConverted, execution.OperationChatCompletion
+	spec.ClientModel, spec.UpstreamModel = "mira/gpt-6-astra", "gpt-6-astra"
+	spec.Path = "/v1/chat/completions"
+	spec.Body = []byte(`{"model":"mira/gpt-6-astra","stream":true,"messages":[{"role":"user","content":"hello"}]}`)
+	var wire bytes.Buffer
+	result := adapter.ExecuteStream(t.Context(), spec, func(event execution.StreamEvent) error {
+		if event.Kind == execution.StreamEventData {
+			wire.Write(event.Data)
+		}
+		return nil
+	})
+	if result.Error != nil || !strings.Contains(wire.String(), `"content":"ok"`) || !strings.Contains(wire.String(), "data: [DONE]") || strings.Contains(wire.String(), `"model":1`) {
+		t.Fatalf("chat terminal was dropped: %+v body=%q", result.Error, wire.String())
 	}
 }
 
@@ -1721,4 +1898,22 @@ func validSpec(t *testing.T, row models.Credential, keyService encryption.Servic
 	identityGeneration := stateloader.CredentialIdentityGeneration(
 		row.IdentityFingerprint, "codex", "subscription", json.RawMessage(`{}`))
 	return execution.NewAttemptSpec(execution.AttemptSpec{RequestID: "request-1", AttemptID: "attempt-1", Sequence: 1, ChannelID: "codex", RouteMode: execution.RouteNative, ClientProtocol: protocol.OpenAIResponses, Operation: execution.OperationResponsesCreate, ClientModel: "gpt-5", UpstreamModel: "gpt-5", Method: http.MethodPost, Path: "/v1/responses", Body: []byte(`{"model":"gpt-5","input":"hi"}`), TargetConfig: json.RawMessage(`{}`), Credential: execution.NewCredentialSnapshot(row.ID, row.SecretVersion, identityGeneration, []byte(plaintext))})
+}
+
+func TestAdapterDoesNotInventMissingUnaryModel(t *testing.T) {
+	adapter, _, _, keys, row := newAdapterFixture(t, credentialJSON("access", "refresh", time.Now().Add(time.Hour)))
+	setCodexExecutor(t, adapter, &fakeExecutor{result: codex.ExecuteResponse{Payload: []byte(`{"id":"resp_1","object":"response","output":[]}`)}})
+	result := adapter.Execute(t.Context(), validSpec(t, row, keys))
+	if result.Error != nil || result.Model != "" {
+		t.Fatalf("result=%+v", result)
+	}
+}
+
+func TestUnaryProviderSuccessKeepsTokenCountModelContract(t *testing.T) {
+	spec := execution.AttemptSpec{ClientProtocol: protocol.Anthropic, Operation: execution.OperationCountTokens, UpstreamModel: "requested"}
+	response := providerResponse{UpstreamProtocol: protocol.Anthropic, Payload: []byte(`{"input_tokens":3}`)}
+	result := unaryProviderSuccess(nil, spec, response)
+	if result.Model != "requested" || result.Error != nil {
+		t.Fatalf("result=%+v", result)
+	}
 }

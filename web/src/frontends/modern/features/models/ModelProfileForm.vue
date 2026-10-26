@@ -224,7 +224,11 @@ function defaultReasoning(value: string): void {
           @click="reset('auto_compact_token_limit')"
       /></template>
       <template #suffix
-        ><AppIcon :icon="Info" size="xs" :label="t('modelManager.profile.autoCompactHelp')"
+        ><AppIcon
+          :icon="Info"
+          size="xs"
+          :label="t('modelManager.profile.autoCompactHelp')"
+          class="modern-help-trigger"
       /></template>
     </AppTextField>
     <AppSelect
@@ -386,8 +390,9 @@ function defaultReasoning(value: string): void {
 }
 @media (max-width: 760px) {
   .modern-model-profile-fields {
-    grid-template-columns: max-content minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
   }
+  .modern-model-profile-start,
   .modern-model-profile-end {
     grid-column: 1 / -1;
   }

@@ -29,6 +29,16 @@ English · [中文](README_CN.md) · [日本語](README_JP.md) | [Official Websi
 <details open>
 <summary>Sponsor details (collapsible)</summary>
 
+<a href="https://modelflare.dev/sign-up?utm_source=github&amp;utm_campaign=gptload" target="_blank" rel="sponsored noopener noreferrer"><img src="./screenshot/modelflare-banner-en.png" alt="Modelflare"></a>
+
+Thanks to Modelflare for sponsoring this project! Modelflare: Full strength, stable, nothing watered down. Global SOTA models at a lower cost. Operated by US-based Havenbyte LLC, Modelflare supports GPT, Claude, Gemini, Grok, and other leading models through common compatible protocols, plus 40+ image and video models.
+
+**Cache compensation** is a highlight: selected OpenAI groups (price-first, stable, and premium) guarantee daily cache hit rates of 65%, 75%, or 85%, and if eligible requests fall short, Modelflare refunds the difference, visible on the usage dashboard after settlement.
+
+**Special offers**: a single top-up of US&#36;20 unlocks the GPT discount group at a 0.015x price multiplier, and a single top-up of US&#36;50 unlocks the Claude discount group at a 0.03x multiplier. Register via <a href="https://modelflare.dev/sign-up?utm_source=github&amp;utm_campaign=gptload" target="_blank" rel="sponsored noopener noreferrer">this exclusive link</a> to get started.
+
+---
+
 <table>
 <tbody>
 <tr>
@@ -107,6 +117,10 @@ Initial setup takes three steps:
 1. **Add a channel** — Choose an upstream service and add one or more API keys. For subscription channels, complete the OAuth flow or import credentials as prompted.
 2. **Create a group** — Pick a channel, then configure available models and runtime policy.
 3. **Create an AccessKey** — Set the groups and client protocols it may use, then give the generated AccessKey to your application.
+
+**Optional stream retry (`empty_response_retry`, disabled by default).** Enabled groups retry completed empty streams and upstream streams cut before any text, tool, or other non-reasoning output, only while no response bytes have reached the client. Anthropic thinking/redacted-thinking blocks and thinking/signature deltas are buffered for at most 45 seconds from the first buffered byte per attempt, unless output or a buffer limit releases them sooner; retries can add more waiting time and upstream usage. Empty thinking markers do not count as produced content. Explicit error events, explained business stops, request rejection, cancellation, internal failures, and completed streams are not reclassified as truncations. If every candidate truncates, the last raw stream is delivered and logged as `incomplete` / `upstream_stream_truncated`, even with HTTP 200. Once bytes are sent, a later cut cannot be transparently replayed. Request-log `first_response_ms` measures upstream first response, not client first-byte latency.
+
+**Mira streaming compatibility.** HTTP read blocks are reassembled on actual SSE delimiters before model-alias rewriting; network chunk boundaries never add event delimiters. Native and converted streams preserve UTF-8 and tool-argument JSON across split reads. Converted Chat emits `[DONE]` only after an observed Claude `message_stop`, not merely because the upstream connection closed. A partial event at EOF remains an upstream truncation. A complete event that is not valid JSON, or that carries a model field the alias rewriter cannot apply, remains a protocol error if no stream data has been forwarded. After at least one data event has been forwarded, a later unrewritable event has its model identifiers stripped and is still forwarded, so later events such as `[DONE]` and `message_stop` can reach the client. Invalid JSON is dropped. A valid event with no model field is forwarded unchanged.
 
 <details>
 <summary>OAuth callback ports for subscription channels</summary>

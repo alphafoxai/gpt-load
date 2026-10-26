@@ -107,6 +107,18 @@ func JudgeExecution(attempt ExecutionAttempt, decisionContext DecisionContext) D
 			"content.empty_response",
 		), attempt)
 	}
+	if attempt.Evidence.Code == StreamTruncatedBeforeContentCode {
+		// 上游在首个可见增量之前断开，客户端尚未收到任何字符。换一个候选重试
+		// 让用户仍能拿到完整回答；这与空回同样不是凭据故障，因此不冷却、不拉黑。
+		return constrainCommittedDecision(decision(
+			FailureCategoryAmbiguous,
+			execution.ErrorOriginUpstream,
+			execution.ErrorScopeRequest,
+			RetryNextCandidate,
+			EffectNone,
+			"stream.truncated_before_content",
+		), attempt)
+	}
 	if attempt.DispatchState == execution.DispatchNotSent {
 		if result, ok := candidatePreparationDecision(attempt.Evidence); ok {
 			return result
@@ -136,7 +148,9 @@ func JudgeExecution(attempt ExecutionAttempt, decisionContext DecisionContext) D
 				evidence.ReplaySafety = execution.ReplaySafetyRejectedBeforeProcessing
 				attempt.Evidence = &evidence
 				category := classifyExecutionEvidence(attempt)
-				return constrainCommittedDecision(decisionForExecutionCategory(category, attempt, decisionContext), attempt)
+				result := decisionForExecutionCategory(category, attempt, decisionContext)
+				result = decisionContext.ErrorRules.apply(result, attempt, decisionContext)
+				return constrainCommittedDecision(result, attempt)
 			}
 			return decision(FailureCategoryAmbiguous, originForEvidence(attempt.Evidence), attempt.Evidence.ScopeHint,
 				RetryNone, EffectNone, "fallback.not_sent")
@@ -212,6 +226,7 @@ func JudgeExecution(attempt ExecutionAttempt, decisionContext DecisionContext) D
 	}
 	category := classifyExecutionEvidence(attempt)
 	result := decisionForExecutionCategory(category, attempt, decisionContext)
+	result = decisionContext.ErrorRules.apply(result, attempt, decisionContext)
 	if attempt.Evidence.ReplaySafety == execution.ReplaySafetyUnknown &&
 		result.RuleID == "fallback.ambiguous" {
 		result.RuleID = "safety.replay_unknown"
@@ -637,6 +652,7 @@ func rateLimitDecision(attempt ExecutionAttempt, decisionContext DecisionContext
 		effect,
 		ruleID,
 	)
+	result.QuotaCooldown = true
 	if attempt.Evidence.RetryAfter > 0 {
 		result.CooldownUntil = attempt.Now.Add(attempt.Evidence.RetryAfter)
 		result.RuleID = "rate_limit.retry_after"
@@ -733,6 +749,9 @@ func constrainCommittedDecision(result Decision, attempt ExecutionAttempt) Decis
 		result.RuleID = "rate_limit.credential.committed"
 	} else if originalRetry != result.Retry || originalEffect != result.Effect {
 		result.RuleID = "safety.committed"
+	}
+	if result.Effect != EffectCooldownCredential && result.Effect != EffectCooldownModel {
+		result.QuotaCooldown = false
 	}
 	return result
 }

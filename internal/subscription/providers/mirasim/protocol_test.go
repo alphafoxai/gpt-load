@@ -1,9 +1,14 @@
 package mirasim
 
 import (
+	"context"
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -124,6 +129,42 @@ func TestRelayAgentRecognizesCodexRoutes(t *testing.T) {
 	}
 	if got := relayModelFamily("gpt-6-astra"); got != "gpt" {
 		t.Fatalf("gpt family = %q", got)
+	}
+}
+
+func TestStreamFailureKeepsTheSelectedClaudePath(t *testing.T) {
+	key := testDevicePEM(t)
+	var seenPath string
+	relay := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenPath = r.URL.Path
+		switch r.URL.Path {
+		case "/v1/device/session":
+			_, _ = io.WriteString(w, `{"ticket":"t","expiresIn":600}`)
+		default:
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = io.WriteString(w, `{"error":"busy"}`)
+		}
+	}))
+	defer relay.Close()
+
+	credential, err := ParseCredentialJSON([]byte(`{"type":"mirasim","access_token":"access-secret","refresh_token":"refresh-secret","device_private_key":` + jsonString(key) + `,"relay_url":"` + relay.URL + `","admin_url":"` + relay.URL + `"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, body, err := NewExecutor().ExecuteStream(context.Background(), credential, ExecuteRequest{
+		Model:   "claude-opus-5-5",
+		Payload: []byte(`{"model":"claude-opus-5-5","max_tokens":16,"messages":[{"role":"user","content":"hi"}]}`),
+		Format:  "claude",
+	})
+	if body != nil {
+		t.Fatal("error response returned a stream body")
+	}
+	var status interface{ StatusCode() int }
+	if !errors.As(err, &status) || status.StatusCode() != http.StatusServiceUnavailable {
+		t.Fatalf("execute stream error = %v", err)
+	}
+	if seenPath != "/v1/messages" || response.UpstreamRequestPath != "/v1/messages" {
+		t.Fatalf("path sent %q reported %q, want /v1/messages", seenPath, response.UpstreamRequestPath)
 	}
 }
 

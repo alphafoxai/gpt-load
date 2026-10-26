@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ExternalLink, Send } from '@lucide/vue'
+import { ExternalLink, Info, Send } from '@lucide/vue'
 import { computed, nextTick, onScopeDispose, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
@@ -12,6 +12,7 @@ import {
   AppCopyValue,
   AppExternalLink,
   AppIcon,
+  AppIconButton,
   AppTextArea,
   AppTextField,
 } from '@modern/components/ui'
@@ -255,6 +256,14 @@ async function submitPastedCallback(): Promise<void> {
       <h4>
         <span aria-hidden="true">2</span
         >{{ t(device ? 'subscriptions.deviceStep' : 'subscriptions.callbackStep') }}
+        <AppIconButton
+          v-if="!device"
+          touchable
+          :icon="Info"
+          :label="t('subscriptions.callbackHelp')"
+          size="xxs"
+          class="modern-help-trigger"
+        />
       </h4>
       <template v-if="device">
         <div v-if="stage.userCode && providers.length <= 1" class="modern-subscription-device-code">
@@ -267,7 +276,7 @@ async function submitPastedCallback(): Promise<void> {
           :model-value="modelValue"
           :label="t('subscriptions.callbackURL')"
           label-hidden
-          :description="t('subscriptions.callbackHelp')"
+          :hint="t('subscriptions.callbackHelp')"
           :placeholder="placeholder"
           :rows="3"
           mono

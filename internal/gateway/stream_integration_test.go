@@ -14,7 +14,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -952,11 +951,7 @@ func performStreamingRequest(engine *gin.Engine) *httptest.ResponseRecorder {
 
 func openAIStreamFixture(t *testing.T) []byte {
 	t.Helper()
-	_, filename, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("runtime.Caller() failed")
-	}
-	fixture, err := os.ReadFile(filepath.Join(filepath.Dir(filename), "..", "testutil", "fakeupstream", "testdata", "openai", "stream.sse"))
+	fixture, err := os.ReadFile(filepath.Join("..", "testutil", "fakeupstream", "testdata", "openai", "stream.sse"))
 	if err != nil {
 		t.Fatalf("read OpenAI stream fixture: %v", err)
 	}

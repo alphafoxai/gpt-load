@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useMobileLayout } from '@modern/app/use-mobile-layout'
 import { Boxes, PencilLine, RotateCcw } from '@lucide/vue'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { computed, nextTick, onScopeDispose, ref, watch } from 'vue'
@@ -26,18 +27,18 @@ import {
   AppDialogContent,
   AppDialogHeader,
   AppFormSection,
-  AppOverflowText,
   AppProtocolTag,
   AppSearchSelect,
+  AppTag,
 } from '@modern/components/ui'
 import { formatCompactNumber } from '@modern/components/ui/format'
 import { priceStatus } from './models-display'
 import { useLoadingActivity } from '@modern/components/ui/loading'
 import AppDraftGuard from '@modern/components/AppDraftGuard.vue'
 import ModelPricingDetails from './ModelPricingDetails.vue'
-import './model-group-chip.css'
 import ModelPriceEditor from './ModelPriceEditor.vue'
 
+const isMobile = useMobileLayout()
 const props = defineProps<{
   model: string
   source: number
@@ -313,7 +314,7 @@ async function reset(): Promise<void> {
             <template v-else>
               <AppFormSection
                 :title="t(admin ? 'modelManager.pricing' : 'modelManager.basePrices')"
-                :description="admin ? undefined : t('modelManager.readOnlyPriceHelp')"
+                :hint="admin ? undefined : t('modelManager.readOnlyPriceHelp')"
                 compact
               >
                 <template v-if="admin" #actions>
@@ -326,7 +327,12 @@ async function reset(): Promise<void> {
                 </template>
                 <ModelPricingDetails :price="price" />
               </AppFormSection>
-              <AppFormSection v-if="admin && catalog" :title="t('modelManager.catalog')" compact>
+              <AppFormSection
+                v-if="admin && catalog"
+                :collapsible="isMobile"
+                :title="t('modelManager.catalog')"
+                compact
+              >
                 <div class="modern-model-catalog-origin">
                   <span>{{
                     t(
@@ -369,14 +375,13 @@ async function reset(): Promise<void> {
                   {{ modalityText(catalog.modalities.output) || '—' }}
                 </p>
                 <div v-if="capabilities.length || catalog.status" class="modern-model-detail-tags">
-                  <AppBadge
+                  <AppTag
                     v-for="capability in capabilities"
                     :key="capability"
+                    :text="t('modelManager.capability.' + capability)"
                     size="xs"
                     tone="neutral"
-                  >
-                    {{ t('modelManager.capability.' + capability) }}
-                  </AppBadge>
+                  />
                   <AppBadge v-if="catalog.status" tone="neutral" size="xs">
                     {{
                       ['alpha', 'beta', 'deprecated'].includes(catalog.status)
@@ -388,6 +393,7 @@ async function reset(): Promise<void> {
               </AppFormSection>
               <AppFormSection
                 v-if="admin && groups.length"
+                :collapsible="isMobile"
                 :title="t('modelManager.relatedGroups')"
                 compact
               >
@@ -396,11 +402,13 @@ async function reset(): Promise<void> {
                   :class="{ 'has-shared-protocols': sharedProtocols !== null }"
                 >
                   <div v-for="group in groups" :key="group.id" class="modern-model-detail-group">
-                    <RouterLink
+                    <AppTag
+                      :as="RouterLink"
                       :to="{ name: 'modern-group-detail', params: { id: String(group.id) } }"
-                      class="modern-model-group-chip"
-                      ><AppOverflowText :text="group.name || t('logs.deleted')"
-                    /></RouterLink>
+                      :text="group.name || t('logs.deleted')"
+                      size="xs"
+                      tone="neutral"
+                    />
                     <AppBadge v-if="!group.enabled" size="xs" variant="plain">{{
                       t('modelManager.paused')
                     }}</AppBadge>
@@ -423,13 +431,18 @@ async function reset(): Promise<void> {
               </AppFormSection>
               <AppFormSection
                 v-if="admin && relatedModels.length > 1"
+                :collapsible="isMobile"
                 :title="t('modelManager.relatedModels')"
                 compact
               >
                 <div class="modern-model-detail-tags">
-                  <AppBadge v-for="item in relatedModels" :key="item" size="xs" tone="neutral">
-                    <AppOverflowText :text="item" />
-                  </AppBadge>
+                  <AppTag
+                    v-for="item in relatedModels"
+                    :key="item"
+                    :text="item"
+                    size="xs"
+                    tone="neutral"
+                  />
                 </div>
               </AppFormSection>
             </template>
@@ -607,10 +620,6 @@ async function reset(): Promise<void> {
 .modern-model-detail-group > :first-child {
   min-width: 0;
   max-width: 100%;
-}
-/* 详情里分组是独立段落，比表格行里的标签放大一档。 */
-.modern-model-detail-group .modern-model-group-chip {
-  --modern-model-chip-height: var(--modern-badge-sm);
 }
 .modern-model-detail-footer {
   display: flex;

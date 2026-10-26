@@ -20,10 +20,7 @@ func normalizeConvertedAnthropicStartUsage(payload []byte) ([]byte, error) {
 		}
 		body := bytes.TrimSpace(line[len("data:"):])
 		var event map[string]json.RawMessage
-		if err := json.Unmarshal(body, &event); err != nil {
-			return nil, err
-		}
-		if string(event["type"]) != `"message_start"` {
+		if err := json.Unmarshal(body, &event); err != nil || string(event["type"]) != `"message_start"` {
 			continue
 		}
 		rawMessage, exists := event["message"]
@@ -32,7 +29,7 @@ func normalizeConvertedAnthropicStartUsage(payload []byte) ([]byte, error) {
 		}
 		var message map[string]json.RawMessage
 		if err := json.Unmarshal(rawMessage, &message); err != nil {
-			return nil, err
+			continue
 		}
 		rawUsage, exists := message["usage"]
 		if !exists {

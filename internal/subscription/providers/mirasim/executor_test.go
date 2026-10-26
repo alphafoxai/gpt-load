@@ -1,9 +1,16 @@
 package mirasim
 
 import (
+	"bufio"
+	"bytes"
+	"context"
 	"encoding/json"
+	"io"
+	"reflect"
 	"strings"
 	"testing"
+
+	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
 )
 
 func TestBuildProviderRequestSelectsModelWire(t *testing.T) {
@@ -141,4 +148,137 @@ func systemBlocks(t *testing.T, body []byte) []string {
 func jsonQuote(value string) string {
 	raw, _ := json.Marshal(value)
 	return string(raw)
+}
+
+// 转换器返回的是逻辑 JSON 或 SSE 事件，交给 io.ReadCloser 前必须成为完整线缆 SSE。
+func TestTranslatedClaudeStreamHasRealSSEBoundaries(t *testing.T) {
+	const prefix = "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"m\",\"model\":\"claude-opus-5-5\",\"usage\":{\"input_tokens\":3,\"output_tokens\":0}}}\n\n" +
+		"event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n" +
+		"event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"完整答案\"}}\n\n" +
+		"event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n" +
+		"event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":4}}\n\n"
+	for _, format := range []sdktranslator.Format{sdktranslator.FormatOpenAI, sdktranslator.FormatGemini, sdktranslator.FormatOpenAIResponse} {
+		for _, stopped := range []bool{false, true} {
+			name := string(format) + "/truncated"
+			input := prefix
+			if stopped {
+				name = string(format) + "/complete"
+				input += "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+			}
+			t.Run(name, func(t *testing.T) {
+				reader := translateStream(context.Background(), sdktranslator.FormatClaude, format, "claude-opus-5-5", []byte(`{}`), []byte(`{}`), io.NopCloser(strings.NewReader(input)))
+				defer reader.Close()
+				wire, err := io.ReadAll(reader)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !bytes.HasSuffix(wire, []byte("\n\n")) {
+					t.Fatalf("translated output lacks SSE delimiter: %q", wire)
+				}
+				scanner := bufio.NewScanner(bytes.NewReader(wire))
+				var text strings.Builder
+				done := false
+				for scanner.Scan() {
+					line := scanner.Bytes()
+					if len(line) == 0 || bytes.HasPrefix(line, []byte("event:")) {
+						continue
+					}
+					if !bytes.HasPrefix(line, []byte("data:")) {
+						t.Fatalf("bare translated JSON leaked: %q", line)
+					}
+					payload := bytes.TrimSpace(line[5:])
+					if bytes.Equal(payload, []byte("[DONE]")) {
+						done = true
+						continue
+					}
+					if !json.Valid(payload) {
+						t.Fatalf("invalid converted SSE JSON: %q", payload)
+					}
+					text.Write(payload)
+				}
+				if !strings.Contains(text.String(), "完整答案") {
+					t.Fatalf("answer lost in conversion: %s", text.String())
+				}
+				if format == sdktranslator.FormatOpenAI && done != stopped {
+					t.Fatalf("DONE=%v, observed message_stop=%v", done, stopped)
+				}
+			})
+		}
+	}
+}
+
+func TestTranslatedResponsesStreamMapsCompletedToChatDONE(t *testing.T) {
+	input := "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"OK\"}\n\n" +
+		"event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}}\n\n"
+	reader := translateStream(context.Background(), sdktranslator.FormatCodex, sdktranslator.FormatOpenAI, "gpt-6-astra", []byte(`{}`), []byte(`{}`), io.NopCloser(strings.NewReader(input)))
+	defer reader.Close()
+	wire, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(wire, []byte("data: [DONE]")) {
+		t.Fatalf("Responses completed was not mapped to Chat DONE: %q", wire)
+	}
+	truncated := "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"OK\"}\n\n"
+	reader = translateStream(context.Background(), sdktranslator.FormatCodex, sdktranslator.FormatOpenAI, "gpt-6-astra", []byte(`{}`), []byte(`{}`), io.NopCloser(strings.NewReader(truncated)))
+	defer reader.Close()
+	wire, err = io.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(wire, []byte("data: [DONE]")) {
+		t.Fatalf("truncated Responses stream forged DONE: %q", wire)
+	}
+}
+
+func TestBuildProviderRequestCompletesAstraJSONSchemaRequired(t *testing.T) {
+	schema := `{"type":"object","properties":{"answer":{"type":"string"},"impossible":{"type":"boolean"}},"required":["answer"],"additionalProperties":false}`
+	body, route, err := buildProviderRequest(ExecuteRequest{
+		Model: "gpt-6-astra", Format: "openai-response",
+		Payload: []byte(`{"model":"gpt-6-astra","input":"hi","text":{"format":{"type":"json_schema","name":"response","strict":true,"schema":` + schema + `}}}`),
+	}, true)
+	if err != nil || route.Path != "/v1/responses" {
+		t.Fatalf("route = %#v err=%v", route, err)
+	}
+	assertAstraSchemaRequired(t, body)
+
+	chatBody, chatRoute, err := buildProviderRequest(ExecuteRequest{
+		Model: "gpt-6-astra", Format: "openai",
+		Payload: []byte(`{"model":"gpt-6-astra","messages":[{"role":"user","content":"hi"}],"response_format":{"type":"json_schema","json_schema":{"name":"response","strict":true,"schema":` + schema + `}}}`),
+	}, true)
+	if err != nil || chatRoute.Path != "/v1/responses" {
+		t.Fatalf("chat route = %#v err=%v", chatRoute, err)
+	}
+	assertAstraSchemaRequired(t, chatBody)
+
+	claudeBody, claudeRoute, err := buildProviderRequest(ExecuteRequest{
+		Model: "claude-opus-5-5", Format: "claude",
+		Payload: []byte(`{"model":"claude-opus-5-5","max_tokens":16,"messages":[{"role":"user","content":"hi"}],"output_config":{"format":{"type":"json_schema","schema":` + schema + `}}}`),
+	}, false)
+	if err != nil || claudeRoute.Path != "/v1/messages" {
+		t.Fatalf("claude route = %#v err=%v", claudeRoute, err)
+	}
+	var claude map[string]any
+	if err := json.Unmarshal(claudeBody, &claude); err != nil {
+		t.Fatal(err)
+	}
+	output, _ := claude["output_config"].(map[string]any)
+	format, _ := output["format"].(map[string]any)
+	if !reflect.DeepEqual(stringSlice(format["schema"].(map[string]any)["required"]), []string{"answer"}) {
+		t.Fatalf("claude schema was rewritten: %s", claudeBody)
+	}
+}
+
+func assertAstraSchemaRequired(t *testing.T, body []byte) {
+	t.Helper()
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatal(err)
+	}
+	text, _ := payload["text"].(map[string]any)
+	format, _ := text["format"].(map[string]any)
+	schema, _ := format["schema"].(map[string]any)
+	if !reflect.DeepEqual(stringSlice(schema["required"]), []string{"answer", "impossible"}) {
+		t.Fatalf("required = %#v body=%s", schema["required"], body)
+	}
 }

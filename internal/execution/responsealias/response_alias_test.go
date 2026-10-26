@@ -48,3 +48,29 @@ func TestRewriteSSEPreservesMultipleEventsAndJoinsMultilineData(t *testing.T) {
 		t.Fatalf("SSE framing changed: %q", rewritten)
 	}
 }
+
+func TestRewriteSSEPassesEventsWithoutModelAndRejectsBrokenModelJSON(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"ok\"}}\n\n")
+	rewritten, err := RewriteSSE(protocol.Anthropic, input, "public-model")
+	if err != nil || !bytes.Equal(rewritten, input) {
+		t.Fatalf("event without a model field stopped the stream: %q %v", rewritten, err)
+	}
+	if _, err := RewriteSSE(protocol.Anthropic, []byte("data: {\"type\":\"message_start\",\"message\":1}\n\n"), "public-model"); err == nil {
+		t.Fatal("broken model JSON was forwarded with the upstream model")
+	}
+}
+
+func TestStripUnrewritableModelDropsModelAndKeepsTerminal(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("data: {\"type\":\"response.completed\",\"response\":{\"model\":\"upstream-model\",\"status\":\"completed\"}}\n\n")
+	got, ok := StripUnrewritableModel(protocol.OpenAIResponses, input)
+	if !ok || bytes.Contains(got, []byte("upstream-model")) || !bytes.Contains(got, []byte(`"status":"completed"`)) {
+		t.Fatalf("stripped = %q ok=%v", got, ok)
+	}
+	if _, ok := StripUnrewritableModel(protocol.Anthropic, []byte("data: {\"type\":\n\n")); ok {
+		t.Fatal("invalid JSON was forwarded")
+	}
+}

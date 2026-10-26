@@ -114,6 +114,7 @@ func TestEmbeddedPageRouteManifestContainsCurrentPages(t *testing.T) {
 		"group-detail":      "/groups/:id",
 		"access-keys":       "/access-keys",
 		"monitor":           "/monitor",
+		"mirasim-status":    "/mirasim-status",
 		"monitor-usage":     "/monitor/usage",
 		"monitor-logs":      "/monitor/logs",
 		"monitor-health":    "/monitor/health",
@@ -139,16 +140,17 @@ func TestClassicPageRouteManifestKeepsOriginalPages(t *testing.T) {
 		t.Fatalf("parse classic page route manifest: %v", err)
 	}
 	want := map[string]string{
-		"home":         "/",
-		"login":        "/login",
-		"import":       "/import",
-		"groups":       "/groups",
-		"group-detail": "/groups/:id",
-		"access-keys":  "/access-keys",
-		"monitor":      "/monitor",
-		"models":       "/models",
-		"proxies":      "/proxies",
-		"settings":     "/settings",
+		"home":           "/",
+		"login":          "/login",
+		"import":         "/import",
+		"groups":         "/groups",
+		"group-detail":   "/groups/:id",
+		"access-keys":    "/access-keys",
+		"monitor":        "/monitor",
+		"mirasim-status": "/mirasim-status",
+		"models":         "/models",
+		"proxies":        "/proxies",
+		"settings":       "/settings",
 	}
 	if len(routes) != len(want) {
 		t.Fatalf("classic page manifest has %d routes, want %d original routes", len(routes), len(want))

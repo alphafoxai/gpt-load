@@ -48,3 +48,8 @@ func (category FailureCategory) String() string {
 // EmptyResponseCode 标识「上游正常完成但没有产出任何内容」的证据。它由数据面
 // 在提交响应前判定，是业务层面的空回，而非传输或协议故障。
 const EmptyResponseCode = "upstream_empty_response"
+
+// StreamTruncatedBeforeContentCode 标识「上游在首个可见增量之前断开」的证据。
+// 响应尚未提交给客户端，换一个候选重试不会让用户看到半截回答，也不会把同一条
+// 输入重复呈现。它只用于流式路径，且仅在客户端还没收到任何字节时出现。
+const StreamTruncatedBeforeContentCode = "upstream_stream_truncated"

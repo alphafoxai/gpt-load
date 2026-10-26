@@ -139,7 +139,7 @@ func (bridge *mirasimProviderBridge) ExecuteStream(
 		}
 	}()
 	return &providerStreamResponse{
-		Headers: response.Headers.Clone(), Chunks: chunks,
+		Headers: response.Headers.Clone(), Chunks: chunks, RawSSE: true,
 		UpstreamProtocol: mirasimUpstreamProtocol(response.UpstreamRequestPath),
 	}, nil
 }

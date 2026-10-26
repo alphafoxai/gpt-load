@@ -58,10 +58,10 @@ func (e *Executor) Execute(ctx context.Context, credential Storage, request Exec
 	credential = applyRelayOverride(credential, request.BaseURL)
 	response, err := clientFor(credential, request).Do(ctx, http.MethodPost, route.Path, nil, requestHeaders(request.Headers, route.Format), body)
 	if err != nil {
-		return ExecuteResponse{}, err
+		return ExecuteResponse{UpstreamRequestPath: route.Path}, err
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return ExecuteResponse{}, NewStatusError(response.StatusCode, response.Body, response.Header)
+		return ExecuteResponse{UpstreamRequestPath: route.Path}, NewStatusError(response.StatusCode, response.Body, response.Header)
 	}
 	upstream := response.Body
 	if route.Format == sdktranslator.FormatCodex {
@@ -90,7 +90,9 @@ func (e *Executor) ExecuteStream(ctx context.Context, credential Storage, reques
 	credential = applyRelayOverride(credential, request.BaseURL)
 	response, stream, err := clientFor(credential, request).DoStream(ctx, http.MethodPost, route.Path, nil, requestHeaders(request.Headers, route.Format), body)
 	if err != nil {
-		return ExecuteResponse{}, nil, err
+		// 失败也要带上已经选定的路径。否则调用方只能退回通道默认的
+		// Responses 协议，Claude 打到 /v1/messages 也会被记成 openai-responses。
+		return ExecuteResponse{UpstreamRequestPath: route.Path}, nil, err
 	}
 	headers := cloneHeader(response.Header)
 	headers.Set("Content-Type", "text/event-stream")
@@ -243,6 +245,7 @@ func translateStream(ctx context.Context, from, to sdktranslator.Format, model s
 			return
 		}
 		var state any
+		wroteChatDone := false
 		scanner := bufio.NewScanner(input)
 		scanner.Buffer(make([]byte, 0, 64*1024), maxCodexEventBytes)
 		for scanner.Scan() {
@@ -255,8 +258,23 @@ func translateStream(ctx context.Context, from, to sdktranslator.Format, model s
 				if len(frame) == 0 {
 					continue
 				}
-				if _, err := writer.Write(append(append([]byte(nil), frame...), '\n')); err != nil {
+				wired := translatedSSEFrame(frame)
+				if _, err := writer.Write(wired); err != nil {
 					return
+				}
+				if to == sdktranslator.FormatOpenAI && bytes.Contains(wired, []byte("data: [DONE]")) {
+					wroteChatDone = true
+				}
+			}
+			if to == sdktranslator.FormatOpenAI && !wroteChatDone && bytes.HasPrefix(line, []byte("data:")) {
+				var event struct {
+					Type string `json:"type"`
+				}
+				if json.Unmarshal(bytes.TrimSpace(line[5:]), &event) == nil && isObservedChatSuccessTerminal(event.Type) {
+					if _, err := writer.Write([]byte("data: [DONE]\n\n")); err != nil {
+						return
+					}
+					wroteChatDone = true
 				}
 			}
 		}
@@ -265,6 +283,26 @@ func translateStream(ctx context.Context, from, to sdktranslator.Format, model s
 		}
 	}()
 	return reader
+}
+
+func isObservedChatSuccessTerminal(eventType string) bool {
+	switch eventType {
+	case "message_stop", "response.completed", "response.incomplete":
+		return true
+	default:
+		return false
+	}
+}
+
+// translatedSSEFrame 把 SDK 的逻辑 JSON/事件封装成真实 SSE，之后 HTTP 读取可以任意分块。
+func translatedSSEFrame(frame []byte) []byte {
+	frame = bytes.TrimRight(frame, "\r\n")
+	var output []byte
+	if !bytes.HasPrefix(frame, []byte("data:")) && !bytes.HasPrefix(frame, []byte("event:")) && !bytes.HasPrefix(frame, []byte(":")) {
+		output = append(output, "data: "...)
+	}
+	output = append(output, frame...)
+	return append(output, '\n', '\n')
 }
 
 func normalizeBody(body []byte, model string, stream bool, wire sdktranslator.Format, original []byte) ([]byte, error) {
@@ -281,6 +319,7 @@ func normalizeBody(body []byte, model string, stream bool, wire sdktranslator.Fo
 		applyBuiltinEffort(payload, model, original)
 	} else {
 		payload["stream"] = true
+		applyCodexStructuredOutput(payload)
 	}
 	updated, err := json.Marshal(payload)
 	if err != nil {

@@ -13,7 +13,9 @@ import (
 
 	"gpt-load/internal/dialect"
 	"gpt-load/internal/execution"
+	"gpt-load/internal/execution/responsemodel"
 	"gpt-load/internal/health"
+	"gpt-load/internal/platform/contentcoding"
 	platformheader "gpt-load/internal/platform/httpheader"
 	"gpt-load/internal/platform/redact"
 	"gpt-load/internal/protocol"
@@ -188,6 +190,7 @@ func (forwarder *ExecutionForwarder) ForwardStream(
 	if input.APIKey != "" {
 		credentialSecrets = append(credentialSecrets, input.APIKey)
 	}
+	var responseBindingErr error
 	streamBuffer := newSSEEventObservationBuffer(execution.SSEEventLimit(input.ClientProtocol), func(
 		event dialect.StreamEvent,
 		genericProviderError bool,
@@ -208,6 +211,7 @@ func (forwarder *ExecutionForwarder) ForwardStream(
 			}
 			if response, exists := object["response"]; exists {
 				if err := input.OnResponse(response); err != nil {
+					responseBindingErr = err
 					return false, err
 				}
 			}
@@ -254,8 +258,10 @@ func (forwarder *ExecutionForwarder) ForwardStream(
 	// mu 串行化 sink、预读窗口计时器与收尾逻辑：上游静默时，计时器会从另一个
 	// 协程提交压住的数据。
 	var (
-		mu          sync.Mutex
-		windowTimer *time.Timer
+		mu               sync.Mutex
+		windowTimer      *time.Timer
+		windowTimerPhase time.Duration
+		streamFinished   bool
 	)
 	// commitHeld 把压住的数据照常提交给客户端；调用方需持有 mu。
 	commitHeld := func() {
@@ -356,18 +362,29 @@ func (forwarder *ExecutionForwarder) ForwardStream(
 					errorBody = appendExecutionErrorBody(errorBody, forwardData)
 					return nil
 				}
-				if !streamEvents.producedContent() &&
-					preread.hold(forwardData, streamEvents.eventCount, terminalInChunk, streamEvents.sawTerminal) {
-					// 还没有任何产出，继续压住以保留换候选重试的可能。上游静默时不会再有
-					// 事件触发窗口检查，因此由计时器在窗口到期时主动提交。
-					if windowTimer == nil {
-						windowTimer = time.AfterFunc(preread.window, func() {
-							mu.Lock()
-							defer mu.Unlock()
-							commitHeld()
-						})
+				if !streamEvents.producedVisibleContent() {
+					reasoningOnly := streamEvents.sawReasoning
+					if preread.hold(forwardData, streamEvents.eventCount, terminalInChunk, streamEvents.sawTerminal, reasoningOnly) {
+						// 还没有可见产出，继续压住以保留换候选重试的可能。仅推理阶段用
+						// 更宽的窗口，因为首个正文增量之前用户还看不到任何东西。上游静默
+						// 时不会再有事件触发窗口检查，因此由计时器在窗口到期时主动提交。
+						phase := preread.phaseWindow(reasoningOnly)
+						if windowTimer == nil || windowTimerPhase != phase {
+							if windowTimer != nil {
+								windowTimer.Stop()
+							}
+							windowTimerPhase = phase
+							windowTimer = time.AfterFunc(phase-preread.now().Sub(preread.started), func() {
+								mu.Lock()
+								defer mu.Unlock()
+								// Stop 不会等待已启动的回调；阶段切换后的旧回调不能提前提交。
+								if !streamFinished && windowTimerPhase == phase && ctx.Err() == nil {
+									commitHeld()
+								}
+							})
+						}
+						return nil
 					}
-					return nil
 				}
 				if windowTimer != nil {
 					windowTimer.Stop()
@@ -434,6 +451,7 @@ func (forwarder *ExecutionForwarder) ForwardStream(
 	// 回调不会再写入可能已交给下一次尝试的响应。
 	mu.Lock()
 	defer mu.Unlock()
+	streamFinished = true
 	if windowTimer != nil {
 		windowTimer.Stop()
 	}
@@ -460,9 +478,9 @@ func (forwarder *ExecutionForwarder) ForwardStream(
 			} else if len(tail) > 0 {
 				if !committed && streamEvents.firstEventWasProviderError() {
 					errorBody = appendExecutionErrorBody(errorBody, tail)
-				} else if !committed && !streamEvents.producedContent() &&
-					preread.hold(tail, streamEvents.eventCount, redactionRestore.TerminalReleased(), streamEvents.sawTerminal) {
-					// EOF 才释放的恢复数据仍须参与空回判定。
+				} else if !committed && !streamEvents.producedVisibleContent() &&
+					preread.hold(tail, streamEvents.eventCount, redactionRestore.TerminalReleased(), streamEvents.sawTerminal, streamEvents.sawReasoning) {
+					// EOF 才释放的恢复数据仍须参与空回与截断判定。
 				} else if !committed {
 					held, _ := preread.flush()
 					tail = append(held, tail...)
@@ -497,8 +515,16 @@ func (forwarder *ExecutionForwarder) ForwardStream(
 	emptyResponse := !committed && downstreamErr == nil && terminal.Error == nil &&
 		ready != nil && ready.StatusCode >= http.StatusOK && ready.StatusCode < http.StatusMultipleChoices &&
 		preread.active() && streamEvents.endedWithoutContent()
-	if !emptyResponse {
-		// 不是空回：按关闭开关时的结果把压住的数据照常提交，开关只改变空回的处理。
+	// 零字节下发只是重放的必要条件。还必须是缺终态的上游读流故障，不能
+	// 把取消、内部错误、明确业务拒绝或已完成后的错误改写成可重试截断。
+	truncatedBeforeCommit := !committed && !emptyResponse &&
+		ready != nil && ready.StatusCode >= http.StatusOK && ready.StatusCode < http.StatusMultipleChoices &&
+		preread.active() && !streamEvents.producedVisibleContent() && !streamEvents.sawTerminal && !streamEvents.sawExplainedStop &&
+		!streamEvents.sawErrorEvent && !streamEvents.firstEventWasProviderError() &&
+		responseBindingErr == nil && replayableStreamFailure(ctx, downstreamErr, terminal.Error)
+	if !emptyResponse && !truncatedBeforeCommit && ctx.Err() == nil &&
+		(terminal.Error == nil || streamEvents.sawTerminal || streamEvents.sawErrorEvent) &&
+		responseBindingErr == nil && !errors.Is(downstreamErr, errRedactionStream) {
 		commitHeld()
 	}
 	capturedUsage := streamEvents.finalizeUsage()
@@ -513,6 +539,9 @@ func (forwarder *ExecutionForwarder) ForwardStream(
 		result.Usage = preferCapturedStreamUsage(result.Usage, capturedUsage)
 	}
 	result.Committed = committed
+	if !committed && (ctx.Err() != nil || terminal.Error != nil && terminal.Error.Kind == execution.ErrorKindCanceled) {
+		result.Err = executionFailureError(ctx, terminal.Error)
+	}
 	if len(errorBody) > 0 {
 		result.Body = append([]byte(nil), errorBody...)
 		result.ClassificationBody = append([]byte(nil), errorBody...)
@@ -526,6 +555,14 @@ func (forwarder *ExecutionForwarder) ForwardStream(
 				Summary: "Response content could not be restored safely.", ReplaySafety: execution.ReplaySafetyUnknown,
 			}
 		}
+	}
+	if responseBindingErr != nil {
+		result.ExecutionError = &execution.ErrorEvidence{
+			Kind: execution.ErrorKindInternal, OriginHint: execution.ErrorOriginInternal,
+			ScopeHint: execution.ErrorScopeRequest, Code: "response_binding_conflict",
+			Summary: "Response ownership could not be recorded.", ReplaySafety: execution.ReplaySafetyUnknown,
+		}
+		result.ProviderErrorBeforeCommit = !committed
 	}
 	if committed {
 		result.Stream = executionStreamObservation(ctx, terminal, downstreamErr, streamEvents)
@@ -551,6 +588,24 @@ func (forwarder *ExecutionForwarder) ForwardStream(
 			Code:       health.EmptyResponseCode,
 			Summary:    summary,
 		}
+	} else if truncatedBeforeCommit {
+		// 首个可见增量之前断开。保留原样的推理前导：换候选重试全部失败时，
+		// 仍把上游真实返回的这条截断流交付给客户端，而不是网关错误。证据换成
+		// 专门的截断码，让健康判定允许换一个候选静默重试。
+		summary := fixedErrorSummary(health.StreamTruncatedBeforeContentCode)
+		held, _ := preread.flush()
+		result.TruncatedBeforeCommit = true
+		result.Body = held
+		result.ClassificationBody = held
+		result.ErrorSummary = summary
+		result.ExecutionError = &execution.ErrorEvidence{
+			Kind:       execution.ErrorKindProvider,
+			OriginHint: execution.ErrorOriginUpstream,
+			ScopeHint:  execution.ErrorScopeRequest,
+			StatusCode: ready.StatusCode,
+			Code:       health.StreamTruncatedBeforeContentCode,
+			Summary:    summary,
+		}
 	}
 	if !committed && streamEvents.firstEventWasProviderError() {
 		summary := streamEvents.firstSummary
@@ -570,7 +625,7 @@ func (forwarder *ExecutionForwarder) ForwardStream(
 		)
 	}
 	if !committed && result.HasResponse() && !result.ProviderErrorBeforeCommit &&
-		!result.EmptyResponseBeforeCommit {
+		!result.EmptyResponseBeforeCommit && !result.TruncatedBeforeCommit {
 		result = forwarder.prepareBufferedResult(input, result)
 	}
 	return result
@@ -816,6 +871,14 @@ func (forwarder *ExecutionForwarder) prepareBufferedResult(
 		if err != nil {
 			return executionRepresentationFailure(result, err)
 		}
+		// 仅补回原生压缩正文的观测；普通正文可能已在执行层改写为客户端别名。
+		if !result.ResponseModelObserved && input.RouteMode == execution.RouteNative &&
+			responsemodel.IsConversation(input.ClientProtocol, input.Operation) {
+			encoding, err := contentcoding.ParseContentEncoding(headerFieldValues(result.Header, "Content-Encoding"))
+			if err == nil && encoding != contentcoding.Identity {
+				applyResponseModelObservation(&result, prepared.modelObservation)
+			}
+		}
 		result.Header = prepared.headers
 		result.Body = prepared.downstream
 		result.ClassificationBody = prepared.inspectable
@@ -979,6 +1042,7 @@ func newExecutionAttemptSpec(input ForwardInput) (execution.AttemptSpec, error) 
 		Header:                   headers,
 		ConfiguredHeaders:        input.Group.HeaderRules.ConfiguredNames(),
 		ConfiguredParameters:     input.ConfiguredParameters,
+		RemovedParameterPaths:    input.RemovedParameterPaths,
 		Body:                     input.Request.Body,
 		IncludeUsage:             input.ObserveUsage,
 		ForceCredentialRefresh:   input.ForceCredentialRefresh,

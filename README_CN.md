@@ -29,6 +29,16 @@
 <details open>
 <summary>赞助商详情（可折叠）</summary>
 
+<a href="https://modelflare.dev/sign-up?utm_source=github&amp;utm_campaign=gptload" target="_blank" rel="sponsored noopener noreferrer"><img src="./screenshot/modelflare-banner-zh.png" alt="Modelflare"></a>
+
+感谢 Modelflare 赞助本项目！Modelflare：满血稳定不掺水，低成本享受全球 SOTA 模型。站点由美国 LLC 主体 Havenbyte LLC 运营，支持 GPT、Claude、Gemini、Grok 等主流模型和常用兼容协议，还支持 40 多种图片和视频模型。
+
+**缓存补偿**是一大亮点：部分 OpenAI 价格优先、稳定和高级分组提供每日 65%、75%、85% 的缓存命中率保障，符合条件的请求没达到目标的，平台补偿差额，结算后可在用量看板查看。
+
+**特惠活动**：单笔充值 US&#36;20 即可解锁 0.015 倍价格倍率的 GPT 特惠分组，单笔充值 US&#36;50 即可解锁 0.03 倍价格倍率的 Claude 特惠分组。通过<a href="https://modelflare.dev/sign-up?utm_source=github&amp;utm_campaign=gptload" target="_blank" rel="sponsored noopener noreferrer">专属链接</a>注册即可参与。
+
+---
+
 <table>
 <tbody>
 <tr>
@@ -107,6 +117,10 @@ docker compose exec gpt-load sh -c 'cat /app/data/auth.key'
 1. **添加渠道** — 选择上游服务，填入一个或多个 API Key；订阅渠道按界面提示完成 OAuth 授权或导入凭据。
 2. **创建 Group** — 选择渠道，配置可用模型与运行策略。
 3. **创建 AccessKey** — 设置允许访问的 Group 与客户端协议，把生成的 AccessKey 交给应用使用。
+
+**可选流式重试（`empty_response_retry`，默认关闭）。** 启用后，正常结束但无产出的空流，以及正文、工具调用或其他非推理产出之前被上游截断的流，可在客户端零字节下发时换候选重试。Anthropic 的 thinking/redacted_thinking 块及 thinking/signature 增量会从每次尝试的首个缓冲字节起最多压住 45 秒；有正文或达到缓冲上限时提前释放。空推理占位不算实际产出。重试可能累加等待时间及上游用量。显式 error 事件、有明确原因的业务终止、业务拒绝、取消、内部错误和已完成流不会被改判为截断。所有候选均截断时仍交付最后一条原始流，即使 HTTP 200，也记录为 `incomplete` / `upstream_stream_truncated`。字节一旦下发，后续断流不能透明重放。日志 `first_response_ms` 表示上游首响，不是客户端首字节延迟。
+
+**Mira 流式兼容。** HTTP 读取块先按真实 SSE 分隔符组帧，再恢复模型别名；网络分块边界不会被追加成事件分隔符。原生与转换流中的 UTF-8 和工具参数 JSON 可以跨读取块。转换到 Chat 时，只有观察到 Claude 的 `message_stop` 才发 `[DONE]`，不能仅因上游连接关闭就伪造完成。EOF 时的半个事件仍归为上游截断。完整但不是合法 JSON 的事件，以及带模型字段却无法改写的事件，在尚未下发任何数据时仍归为协议错误。一旦下发过数据事件，后续无法改写的事件会去掉模型标识后继续转发，以便 `[DONE]`、`message_stop` 等后续事件仍能到达客户端。非法 JSON 仍丢弃。合法且没有模型字段的事件原样转发。
 
 <details>
 <summary>订阅渠道的 OAuth 回调端口</summary>

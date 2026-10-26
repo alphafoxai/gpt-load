@@ -29,6 +29,16 @@ API キー、サブスクリプションアカウント、トラフィック制�
 <details open>
 <summary>スポンサー詳細（折りたたみ可能）</summary>
 
+<a href="https://modelflare.dev/sign-up?utm_source=github&amp;utm_campaign=gptload" target="_blank" rel="sponsored noopener noreferrer"><img src="./screenshot/modelflare-banner-ja.png" alt="Modelflare"></a>
+
+本プロジェクトをご支援いただいている Modelflare に感謝します！Modelflare：フルスペック、安定、水増しなし。世界の SOTA モデルを、より低いコストで。米国拠点の Havenbyte LLC が運営する Modelflare は、一般的な互換プロトコルを通じて GPT、Claude、Gemini、Grok などの主要モデルに対応し、さらに 40 以上の画像・動画モデルも利用できます。
+
+注目は**キャッシュ補償**です。対象の OpenAI グループ（価格優先・安定・プレミアム）は、1 日のキャッシュヒット率をそれぞれ 65%、75%、85% で保証します。対象リクエストがこの水準に達しない場合、Modelflare が差額を返金し、精算後に利用状況ダッシュボードで確認できます。
+
+**特別オファー**：US&#36;20 を 1 回チャージすると、価格倍率 0.015 倍の GPT 割引グループが解放されます。US&#36;50 を 1 回チャージすると、価格倍率 0.03 倍の Claude 割引グループが解放されます。<a href="https://modelflare.dev/sign-up?utm_source=github&amp;utm_campaign=gptload" target="_blank" rel="sponsored noopener noreferrer">こちらの専用リンク</a>から登録して始めましょう。
+
+---
+
 <table>
 <tbody>
 <tr>
@@ -107,6 +117,10 @@ docker compose exec gpt-load sh -c 'cat /app/data/auth.key'
 1. **チャネルを追加** — アップストリームサービスを選び、API キーを 1 つ以上登録します。サブスクリプションチャネルは画面の案内に従って OAuth 認可または認証情報のインポートを行います。
 2. **Group を作成** — チャネルを選び、利用可能なモデルと実行ポリシーを設定します。
 3. **AccessKey を作成** — アクセスを許可する Group とクライアントプロトコルを設定し、生成された AccessKey をアプリケーションに渡します。
+
+**任意のストリームリトライ（`empty_response_retry`、既定は無効）。** 有効な Group は、正常終了した空のストリームと、テキスト・ツール・その他の非推論出力より前に切れたストリームを、クライアントにまだ 1 バイトも送っていない場合だけ別候補で再試行します。Anthropic の thinking/redacted_thinking ブロックと thinking/signature 増分は、各試行の最初のバッファ済みバイトから最大 45 秒保持し、本文またはバッファ上限で早期に解放します。空の推論マーカーは出力として数えません。再試行では待ち時間と上流の使用量が増える場合があります。明示的な error イベント、理由付きの業務終了、リクエスト拒否、キャンセル、内部エラー、終了済みストリームは切断として再分類しません。全候補が切断した場合は最後の生ストリームを返し、HTTP 200 でも `incomplete` / `upstream_stream_truncated` と記録します。送信後の切断は透過的に再試行できません。ログの `first_response_ms` は上流の初回応答であり、クライアントの初回バイト遅延ではありません。
+
+**Mira のストリーム互換性。** HTTP 読み取りブロックは、モデルエイリアスを書き換える前に実際の SSE 区切りで組み立てます。ネットワークの分割境界にイベント区切りを追加しません。ネイティブ・変換ストリームとも、読み取りをまたぐ UTF-8 とツール引数 JSON を保持します。Chat 変換の `[DONE]` は Claude の `message_stop` を観測した場合のみ送信し、接続終了だけでは完了を生成しません。EOF 時の不完全なイベントは上流切断です。完全だが JSON として不正なイベント、およびモデル項目を書き換えられないイベントは、データ未送信ならプロトコルエラーです。データイベントを 1 件でも送った後は、書き換え不能な後続イベントからモデル識別子を除いて転送し、`[DONE]` や `message_stop` などをクライアントへ届けます。不正な JSON は破棄します。モデル項目のない正当なイベントはそのまま転送します。
 
 <details>
 <summary>サブスクリプションチャネルの OAuth コールバックポート</summary>

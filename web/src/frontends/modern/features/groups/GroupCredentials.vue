@@ -9,11 +9,15 @@ import {
   RotateCcw,
   RefreshCw,
   Search,
+  Stethoscope,
   Trash2,
   Upload,
+  X,
 } from '@lucide/vue'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { computed, onScopeDispose, ref, watch } from 'vue'
+import { useMobileLayout } from '@modern/app/use-mobile-layout'
+import { SlidersHorizontal } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import {
@@ -40,7 +44,9 @@ import {
   revealCredential,
   runCredentialAction,
   updateCredential,
+  testCredential,
 } from '@modern/api/credential-actions'
+import { useCredentialTestBatch, type CredentialTestOptions } from '@shared/credential-test-batch'
 import { ApiError } from '@shared/http/errors'
 import {
   APIKeyFileImportError,
@@ -53,6 +59,7 @@ import SubscriptionCredentialCard from './SubscriptionCredentialCard.vue'
 import CredentialDetailPanel from './CredentialDetailPanel.vue'
 import CredentialTestDialog from './CredentialTestDialog.vue'
 import {
+  AppFilterSheet,
   AppButton,
   AppActionMenu,
   AppIcon,
@@ -63,6 +70,8 @@ import {
   AppFilterSummary,
   AppIconButton,
   AppListFrame,
+  AppNotice,
+  AppOverflowText,
   AppPagination,
   AppSegmentedControl,
   AppSortMenu,
@@ -74,13 +83,18 @@ import { useURLState, positivePage } from '@modern/app/url-state'
 import { useMessageSource } from '@modern/app/messages'
 import AppDraftGuard from '@modern/components/AppDraftGuard.vue'
 
-const props = defineProps<{ group: GroupRow; channel?: GroupChannel }>()
+const props = defineProps<{ group: GroupRow; visible?: boolean; channel?: GroupChannel }>()
 const emit = defineEmits<{
   add: []
   changed: []
   pending: [value: boolean]
   updatedAt: [value: number]
 }>()
+const isMobile = useMobileLayout()
+const mobileFilterCount = computed(
+  () => filterSummary.value.filter((item) => ['proxy', 'reset', 'sort'].includes(item.key)).length,
+)
+const mobileFilters = ref(false)
 const { t, n } = useI18n()
 const client = useApiClient()
 const cache = useQueryClient()
@@ -183,6 +197,18 @@ const accountBatch = ref<{
 }>()
 const list = ref<InstanceType<typeof AppListFrame>>()
 const controller = new AbortController()
+const {
+  report: testBatch,
+  pending: testBatchPending,
+  itemsByID: testBatchItems,
+  counts: testBatchCounts,
+  retryIDs: testBatchRetryIDs,
+  run: runTestBatch,
+  stop: stopTestBatch,
+  reset: resetTestBatch,
+} = useCredentialTestBatch()
+const testBatchTargets = ref<number[]>([])
+const testBatchDismissed = ref(false)
 const syncSuccessTimers = new Map<number, ReturnType<typeof setTimeout>>()
 let searchTimer: ReturnType<typeof setTimeout> | undefined
 const query = useQuery(
@@ -195,7 +221,9 @@ const query = useQuery(
 )
 const rows = computed(() => query.data.value?.items ?? [])
 const filteredCredential = computed(() => (filters.value.credential ? rows.value[0] : undefined))
-const busy = computed(() => query.isFetching.value || mutating.value !== undefined)
+const busy = computed(
+  () => query.isFetching.value || mutating.value !== undefined || testBatchPending.value,
+)
 const syncPending = (id: number) => syncing.value.has(id) || queuedSync.value.has(id)
 const bulkBusy = computed(() => busy.value || accountBatchPending.value || syncing.value.size > 0)
 const stale = computed(() => query.isError.value && Boolean(query.data.value))
@@ -312,6 +340,14 @@ const canSyncSelected = computed(
     rows.value.some((row) => selected.value.has(row.id) && !syncPending(row.id)),
 )
 watch(bulkBusy, (value) => emit('pending', value), { immediate: true })
+watch(
+  () => props.group.id,
+  () => {
+    resetTestBatch()
+    testBatchTargets.value = []
+    testBatchDismissed.value = false
+  },
+)
 watch(query.dataUpdatedAt, (value) => emit('updatedAt', value), { immediate: true })
 watch([query.data, bulkBusy], ([data, pending]) => {
   if (!data || query.isPlaceholderData.value) return
@@ -473,6 +509,29 @@ async function runAccountBatch(
     accountBatchPending.value = false
     if (action === 'download') mutating.value = undefined
   }
+}
+function openBatchTest(): void {
+  if (bulkBusy.value || props.group.connectionType !== 'api_key') return
+  testBatchTargets.value = rows.value
+    .filter((row) => selected.value.has(row.id))
+    .map((row) => row.id)
+}
+async function startBatchTest(
+  options: CredentialTestOptions,
+  ids = testBatchTargets.value,
+  retry = false,
+): Promise<void> {
+  if (bulkBusy.value || props.group.connectionType !== 'api_key' || !ids.length) return
+  const groupID = props.group.id
+  testBatchTargets.value = []
+  testBatchDismissed.value = false
+  await runTestBatch(
+    ids,
+    options,
+    (id, selected, signal) =>
+      testCredential(client, groupID, id, selected.protocol, selected.model, signal),
+    retry,
+  )
 }
 async function syncQuota(row: CredentialRow): Promise<void> {
   const previous = syncSuccessTimers.get(row.id)
@@ -834,17 +893,26 @@ async function resetQuota(): Promise<void> {
     void cache.invalidateQueries({ queryKey: credentialDetailKey(props.group.id, row.id) })
   } catch (cause) {
     if (controller.signal.aborted) return
+    const preparationFailed =
+      cause instanceof ApiError && cause.code === 'RESET_CREDIT_PREPARATION_FAILED'
     const unknown =
-      !(cause instanceof ApiError) ||
-      cause.code === 'RESET_CREDIT_OUTCOME_UNKNOWN' ||
-      cause.status >= 500
+      !preparationFailed &&
+      (!(cause instanceof ApiError) ||
+        cause.code === 'RESET_CREDIT_OUTCOME_UNKNOWN' ||
+        cause.status >= 500)
     if (!unknown) {
       resetKeys.delete(row.id)
       resetTarget.value = undefined
     }
     cardErrors.value.set(
       row.id,
-      t(unknown ? 'credentialCards.resetUnknown' : 'credentialCards.actionFailed'),
+      t(
+        preparationFailed
+          ? 'credentialCards.resetPreparationFailed'
+          : unknown
+            ? 'credentialCards.resetUnknown'
+            : 'credentialCards.actionFailed',
+      ),
     )
   } finally {
     mutating.value = undefined
@@ -920,7 +988,7 @@ defineExpose({ refresh })
 </script>
 
 <template>
-  <section class="modern-credentials">
+  <section v-show="visible !== false" class="modern-credentials">
     <div class="modern-credentials-toolbar">
       <AppTextField
         v-model="search"
@@ -935,40 +1003,76 @@ defineExpose({ refresh })
         @compositionstart="composing = true"
         @compositionend="compositionEnd"
       />
-      <AppSelect
-        v-if="group.connectionType === 'subscription'"
-        class="modern-credentials-filter-control"
-        :model-value="filters.reset"
-        :label="t('groupDetail.filters.reset')"
-        label-hidden
-        :options="resetOptions"
-        :disabled="mutating !== undefined || accountBatchPending"
-        @update:model-value="change({ reset: $event as CredentialFilters['reset'], page: 1 })"
-      />
-      <AppSelect
-        class="modern-credentials-filter-control"
-        :model-value="filters.proxy"
-        :label="t('groupDetail.filters.proxy')"
-        label-hidden
-        :options="proxyOptions"
-        :disabled="mutating !== undefined || accountBatchPending"
-        @update:model-value="change({ proxy: $event as CredentialFilters['proxy'], page: 1 })"
+      <AppFilterSheet
+        v-model:open="mobileFilters"
+        :mobile="isMobile"
+        :title="t('ui.mobile.filters')"
+        :active-count="mobileFilterCount"
+        @reset="change({ proxy: '', reset: '', sort: 'priority', page: 1 })"
+      >
+        <AppSelect
+          v-if="group.connectionType === 'subscription'"
+          class="modern-credentials-filter-control"
+          :model-value="filters.reset"
+          :label="t('groupDetail.filters.reset')"
+          :label-hidden="!isMobile"
+          :options="resetOptions"
+          :disabled="mutating !== undefined || accountBatchPending"
+          @update:model-value="change({ reset: $event as CredentialFilters['reset'], page: 1 })" />
+        <AppSelect
+          class="modern-credentials-filter-control"
+          :model-value="filters.proxy"
+          :label="t('groupDetail.filters.proxy')"
+          :label-hidden="!isMobile"
+          :options="proxyOptions"
+          :disabled="mutating !== undefined || accountBatchPending"
+          @update:model-value="change({ proxy: $event as CredentialFilters['proxy'], page: 1 })" />
+        <template v-if="isMobile">
+          <AppSelect
+            :model-value="filters.sort"
+            :label="t('groups.sort.label')"
+            :options="sortOptions"
+            :disabled="mutating !== undefined || accountBatchPending"
+            @update:model-value="change({ sort: $event as CredentialFilters['sort'], page: 1 })"
+          /> </template
+      ></AppFilterSheet>
+      <AppIconButton
+        v-if="isMobile"
+        :icon="SlidersHorizontal"
+        :variant="isMobile && mobileFilterCount ? 'brand' : 'ghost'"
+        :label="t('ui.mobile.filters')"
+        @click="mobileFilters = true"
       />
       <div class="modern-credentials-toolbar-actions">
         <AppSortMenu
+          v-if="!isMobile"
           :model-value="filters.sort"
           :label="t('groups.sort.label')"
           :options="sortOptions"
           :disabled="mutating !== undefined || accountBatchPending"
           @update:model-value="change({ sort: $event as CredentialFilters['sort'], page: 1 })"
         />
-        <AppButton :icon="Plus" variant="primary" :disabled="!channel" @click="emit('add')">{{
-          t(
-            group.connectionType === 'subscription'
-              ? 'groupDetail.connectAccount'
-              : 'groupDetail.addCredentials',
-          )
-        }}</AppButton>
+        <AppButton
+          :icon="Plus"
+          :icon-only="isMobile"
+          :aria-label="
+            t(
+              group.connectionType === 'subscription'
+                ? 'groupDetail.connectAccount'
+                : 'groupDetail.addCredentials',
+            )
+          "
+          variant="primary"
+          :disabled="!channel"
+          @click="emit('add')"
+          ><span v-if="!isMobile">{{
+            t(
+              group.connectionType === 'subscription'
+                ? 'groupDetail.connectAccount'
+                : 'groupDetail.addCredentials',
+            )
+          }}</span></AppButton
+        >
       </div>
     </div>
     <div class="modern-credentials-filters">
@@ -988,6 +1092,7 @@ defineExpose({ refresh })
     </div>
     <AppListFrame
       ref="list"
+      mobile-flow
       :label="t('groupDetail.credentials')"
       :loading="query.isFetching.value"
     >
@@ -1023,6 +1128,14 @@ defineExpose({ refresh })
                 size="sm"
                 :disabled="bulkBusy"
                 @click="deleting = [...selected]"
+              />
+              <AppIconButton
+                v-if="group.connectionType === 'api_key'"
+                :icon="Stethoscope"
+                :label="t('credentialBatchTest.selected')"
+                size="sm"
+                :disabled="bulkBusy"
+                @click="openBatchTest"
               />
               <AppIconButton
                 v-if="group.connectionType === 'subscription' && channel?.quotaObservation"
@@ -1071,6 +1184,52 @@ defineExpose({ refresh })
             </template>
           </AppFileButton>
         </div>
+        <AppNotice
+          v-if="testBatch && !testBatchDismissed"
+          inline
+          :tone="
+            testBatchPending
+              ? 'info'
+              : testBatchCounts.passed === testBatchCounts.total
+                ? 'success'
+                : 'warning'
+          "
+        >
+          <div class="modern-credential-test-summary">
+            <AppOverflowText
+              class="modern-credential-test-target"
+              :text="`${testBatch.options.protocol} · ${testBatch.options.model}`"
+            />
+            <AppOverflowText
+              class="modern-credential-test-counts"
+              :text="
+                t('credentialBatchTest.progress', testBatchCounts) +
+                (testBatchCounts.cancelled
+                  ? ' · ' + t('credentialBatchTest.cancelled', { count: testBatchCounts.cancelled })
+                  : '')
+              "
+            />
+          </div>
+          <template #actions>
+            <AppButton v-if="testBatchPending" size="sm" @click="stopTestBatch">{{
+              t('credentialBatchTest.stop')
+            }}</AppButton>
+            <AppButton
+              v-else-if="testBatchRetryIDs.length"
+              size="sm"
+              :disabled="bulkBusy"
+              @click="startBatchTest(testBatch.options, testBatchRetryIDs, true)"
+              >{{ t('credentialBatchTest.retry') }}</AppButton
+            >
+            <AppIconButton
+              v-if="!testBatchPending"
+              :icon="X"
+              :label="t('shell.close')"
+              size="sm"
+              @click="testBatchDismissed = true"
+            />
+          </template>
+        </AppNotice>
       </template>
       <AppCollectionState
         v-if="query.isError.value && !query.data.value"
@@ -1113,6 +1272,7 @@ defineExpose({ refresh })
             :row="row"
             :selected="selected.has(row.id)"
             :pending="mutating === row.id"
+            :test-state="testBatchItems.get(row.id)"
             :disabled="busy"
             :error="cardErrors.get(row.id)"
             :resolve-secret="copySecret(row.id)"
@@ -1207,6 +1367,13 @@ defineExpose({ refresh })
     @close="testing = undefined"
     @changed="changed"
   />
+  <CredentialTestDialog
+    v-if="testBatchTargets.length"
+    :group-id="group.id"
+    :batch-count="testBatchTargets.length"
+    @close="testBatchTargets = []"
+    @start="startBatchTest"
+  />
   <AppDraftGuard
     :dirty="nameDrafts.size > 0"
     :pending="mutating !== undefined || accountBatchPending || syncing.size > 0"
@@ -1281,6 +1448,20 @@ defineExpose({ refresh })
 .modern-credentials-selected-actions > :first-child {
   margin-right: var(--modern-space-1);
 }
+.modern-credential-test-summary {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: var(--modern-space-3);
+}
+.modern-credential-test-target {
+  flex: 0 1 auto;
+  max-width: 40%;
+}
+.modern-credential-test-counts {
+  flex: 1;
+  font-variant-numeric: tabular-nums;
+}
 .modern-credential-cards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--modern-key-card-min)), 1fr));
@@ -1298,6 +1479,19 @@ defineExpose({ refresh })
   }
   .modern-credentials-toolbar > :first-child {
     flex-basis: 100%;
+  }
+}
+@media (max-width: 760px) {
+  .modern-credentials-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: var(--modern-space-2);
+  }
+  .modern-credentials-toolbar > :first-child {
+    grid-column: auto;
+  }
+  .modern-credentials-toolbar-actions {
+    display: contents;
   }
 }
 </style>
