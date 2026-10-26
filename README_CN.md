@@ -50,10 +50,6 @@
 <td><strong>PackyCode</strong><br>PackyCode 是一家稳定、高效的 API 中转服务商。一句话接入主流大模型。统一域名、统一密钥、智能容灾切换，97% 可用性。人民币1:1充值，无汇率无手续费坑，新用户首充立享折扣 + $1免费体验额度，多分组折扣低至 2 折起，提供专属Codex/Claude Code高速通道。<a href="https://www.packyapi.ai/register?aff=ahiS" target="_blank" rel="sponsored noopener noreferrer">点此链接注册，立即开始使用！</a></td>
 </tr>
 <tr>
-<td width="180"><a href="https://sidrune.ai/register?source=github&amp;campaign=gptload&amp;promo=gptload" target="_blank" rel="sponsored noopener noreferrer"><img src="./screenshot/sidrune-ai.png" alt="Sidrune AI" width="150"></a></td>
-<td><strong>一个入口，接入并管理全球主流AI模型</strong><br>Sidrune AI面向个人开发者、技术团队与企业，通过统一API接入并管理全球主流AI模型；通过多线路动态调度提升可用性，模型表现、响应时间与费用透明可查。根据不同模型与线路，API调用成本较官方或基准价格可降低40%—98%。立即访问并注册，即可获得 $3 API 额度。（<a href="https://sidrune.ai/register?source=github&amp;campaign=gptload&amp;promo=gptload" target="_blank" rel="sponsored noopener noreferrer">专属链接</a>）</td>
-</tr>
-<tr>
 <td width="180"><a href="https://www.axisnow.io/zh"><img src="./screenshot/axisnow.jpg" alt="AxisNow" width="150"></a></td>
 <td>保护并加速网站与 API，<strong>兼顾中国大陆</strong>及全球的访问体验，并通过客户端 SDK，将加速与安全能力延伸至原生/移动 App — <strong>自建私有部署 CDN｜订阅式高防 CDN｜自主可控、灵活组合的 CDN 网络。</strong></td>
 </tr>
@@ -121,6 +117,8 @@ docker compose exec gpt-load sh -c 'cat /app/data/auth.key'
 **可选流式重试（`empty_response_retry`，默认关闭）。** 启用后，正常结束但无产出的空流，以及正文、工具调用或其他非推理产出之前被上游截断的流，可在客户端零字节下发时换候选重试。Anthropic 的 thinking/redacted_thinking 块及 thinking/signature 增量会从每次尝试的首个缓冲字节起最多压住 45 秒；有正文或达到缓冲上限时提前释放。空推理占位不算实际产出。重试可能累加等待时间及上游用量。显式 error 事件、有明确原因的业务终止、业务拒绝、取消、内部错误和已完成流不会被改判为截断。所有候选均截断时仍交付最后一条原始流，即使 HTTP 200，也记录为 `incomplete` / `upstream_stream_truncated`。字节一旦下发，后续断流不能透明重放。日志 `first_response_ms` 表示上游首响，不是客户端首字节延迟。
 
 **Mira 流式兼容。** HTTP 读取块先按真实 SSE 分隔符组帧，再恢复模型别名；网络分块边界不会被追加成事件分隔符。原生与转换流中的 UTF-8 和工具参数 JSON 可以跨读取块。转换到 Chat 时，只有观察到 Claude 的 `message_stop` 才发 `[DONE]`，不能仅因上游连接关闭就伪造完成。EOF 时的半个事件仍归为上游截断。完整但不是合法 JSON 的事件，以及带模型字段却无法改写的事件，在尚未下发任何数据时仍归为协议错误。一旦下发过数据事件，后续无法改写的事件会去掉模型标识后继续转发，以便 `[DONE]`、`message_stop` 等后续事件仍能到达客户端。非法 JSON 仍丢弃。合法且没有模型字段的事件原样转发。
+
+**AlphaFox `2.0.0-rc.55-af.1`。** 本版本合并上游 `d3307afa`（rc.55 及后续依赖更新），保留生产 rc.51-af.1 的流式、Mirasim 和导入修复。上游新增 Codex Responses 前导缓冲，使过载和续接历史拒绝可以在输出前重试；HTTP 与 WebSocket 续接恢复仍遵守重试策略。请求体上限按进程可用内存的 1/14 计算，并限制在 16–128 MiB；进程启动时未设置 `GOMEMLIMIT` 则自动将 Go 软内存上限设为可用内存的 80%。已下发内容不能透明重放；转换后的 Chat 仍以 SSE 错误和 `[DONE]` 显式报告上游断流。
 
 <details>
 <summary>订阅渠道的 OAuth 回调端口</summary>

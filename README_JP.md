@@ -50,10 +50,6 @@ API キー、サブスクリプションアカウント、トラフィック制�
 <td><strong>PackyCode</strong><br>PackyCode は、安定性と効率性を重視した AI API 中継サービスです。ひとつの API エンドポイントと API キーで主要な大規模モデルに接続できます。統一ドメイン、統一キー、スマートな障害切り替えに対応し、可用性は 97% としています。人民元で 1:1 チャージでき、為替差損や追加手数料の心配はありません。新規ユーザーは初回チャージ割引と $1 の無料体験クレジットを受け取れ、複数グループでは最大 80% の割引、Codex／Claude Code 専用の高速ルートも利用できます。<a href="https://www.packyapi.ai/register?aff=ahiS" target="_blank" rel="sponsored noopener noreferrer">リンクから登録して、すぐに利用を開始できます。</a></td>
 </tr>
 <tr>
-<td width="180"><a href="https://sidrune.ai/register?source=github&amp;campaign=gptload&amp;promo=gptload" target="_blank" rel="sponsored noopener noreferrer"><img src="./screenshot/sidrune-ai.png" alt="Sidrune AI" width="150"></a></td>
-<td><strong>一つの入口で、世界の主要AIモデルに接続・管理</strong><br>Sidrune AIは、個人開発者、技術チーム、企業向けに、統一APIで世界の主要AIモデルへの接続と管理を提供します。複数経路の動的なスケジューリングで可用性を高め、モデルの性能、応答時間、料金を透明に確認できます。モデルや経路によっては、API利用料を公式価格または基準価格より40%〜98%抑えられます。今すぐアクセスして登録すると、$3分のAPIクレジットを受け取れます。（<a href="https://sidrune.ai/register?source=github&amp;campaign=gptload&amp;promo=gptload" target="_blank" rel="sponsored noopener noreferrer">専用リンク</a>）</td>
-</tr>
-<tr>
 <td width="180"><a href="https://www.axisnow.io/zh"><img src="./screenshot/axisnow.jpg" alt="AxisNow" width="150"></a></td>
 <td>ウェブサイトと API を保護・高速化し、<strong>中国本土</strong>および世界各地のアクセス体験にも配慮し、クライアント SDK を通じて高速化とセキュリティの機能をネイティブ／モバイルアプリにまで拡張します — <strong>自社構築・プライベート運用 CDN｜サブスクリプション型高防御 CDN｜自主的に制御でき、柔軟に組み合わせられる CDN ネットワーク。</strong></td>
 </tr>
@@ -121,6 +117,8 @@ docker compose exec gpt-load sh -c 'cat /app/data/auth.key'
 **任意のストリームリトライ（`empty_response_retry`、既定は無効）。** 有効な Group は、正常終了した空のストリームと、テキスト・ツール・その他の非推論出力より前に切れたストリームを、クライアントにまだ 1 バイトも送っていない場合だけ別候補で再試行します。Anthropic の thinking/redacted_thinking ブロックと thinking/signature 増分は、各試行の最初のバッファ済みバイトから最大 45 秒保持し、本文またはバッファ上限で早期に解放します。空の推論マーカーは出力として数えません。再試行では待ち時間と上流の使用量が増える場合があります。明示的な error イベント、理由付きの業務終了、リクエスト拒否、キャンセル、内部エラー、終了済みストリームは切断として再分類しません。全候補が切断した場合は最後の生ストリームを返し、HTTP 200 でも `incomplete` / `upstream_stream_truncated` と記録します。送信後の切断は透過的に再試行できません。ログの `first_response_ms` は上流の初回応答であり、クライアントの初回バイト遅延ではありません。
 
 **Mira のストリーム互換性。** HTTP 読み取りブロックは、モデルエイリアスを書き換える前に実際の SSE 区切りで組み立てます。ネットワークの分割境界にイベント区切りを追加しません。ネイティブ・変換ストリームとも、読み取りをまたぐ UTF-8 とツール引数 JSON を保持します。Chat 変換の `[DONE]` は Claude の `message_stop` を観測した場合のみ送信し、接続終了だけでは完了を生成しません。EOF 時の不完全なイベントは上流切断です。完全だが JSON として不正なイベント、およびモデル項目を書き換えられないイベントは、データ未送信ならプロトコルエラーです。データイベントを 1 件でも送った後は、書き換え不能な後続イベントからモデル識別子を除いて転送し、`[DONE]` や `message_stop` などをクライアントへ届けます。不正な JSON は破棄します。モデル項目のない正当なイベントはそのまま転送します。
+
+**AlphaFox `2.0.0-rc.55-af.1`。** 上流 `d3307afa`（rc.55 と後続の依存更新）を取り込み、本番 rc.51-af.1 のストリーム、Mirasim、インポート修正を保持します。Codex Responses の前導イベントを保留し、過負荷や継続履歴の拒否を出力前に再試行できるようになりました。HTTP・WebSocket の継続復旧も再試行ポリシーに従います。リクエスト本文の上限は利用可能メモリの 1/14（16–128 MiB）となり、プロセス起動時に `GOMEMLIMIT` が未設定なら Go のソフトメモリ上限を 80% に設定します。送信済み出力は透過的に再実行できず、Chat 変換では引き続き SSE エラーと `[DONE]` で上流切断を通知します。
 
 <details>
 <summary>サブスクリプションチャネルの OAuth コールバックポート</summary>
